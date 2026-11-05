@@ -114,6 +114,6 @@ public final class Specializer {
         };
       }
     }, 0);
-    return specializedMap;
+    return Map.copyOf(specializedMap);
   };
 }
