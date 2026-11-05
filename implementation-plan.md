@@ -75,7 +75,7 @@ Runtime operations may raise Python exceptions implicitly. The first implementat
 - The generic tuple record defensively copies its input array.
 - Tuple shape is a performance property only. Every tuple intrinsic must work correctly with every tuple representation.
 - There is no `PySet` in the first implementation.
-- ula4j does not declare any value classes. Under `--enable-preview`, JDK classes such as `Long` and `Double` may behave as value classes (see §2.2). Because Python `is` and `is not` are not implemented, the language does not expose a general identity comparison for immutable values. The implementation must nevertheless preserve the specified behavior of every supported operation, especially container lookup and equality.
+- Because Python `is` and `is not` are not implemented, the language does not expose a general identity comparison for immutable values. The implementation must nevertheless preserve the specified behavior of every supported operation, especially container lookup and equality.
 
 ### 2.2 Identity and equality
 
@@ -84,7 +84,6 @@ Runtime operations may raise Python exceptions implicitly. The first implementat
 - Container lookup and membership use a JVM reference-equality fast path where applicable, followed by Python equality. This is an implementation detail of the container algorithms, not a Python identity operator exposed to source programs.
 - Numeric equality and hashing must unify equivalent keys across `bool`, `int`, and `float`, including the supported JVM representations of integers.
 - Tests must not depend on the identity of immutable values or on interning behavior.
-- **Deviation under `--enable-preview` (Valhalla).** In CPython, container lookup and equality use an identity shortcut, so with `x = float('nan')`, `x in [x]` is true, while two separately created NaN values are not found. When `Long` and `Double` are value classes, JVM reference comparison compares by state rather than by object identity, so the reference-equality fast path does not distinguish separately created values with the same state. The behavior of such cases (notably NaN) may therefore differ from CPython. This is a documented deviation, and tests must not depend on it.
 
 ## 3. `PyType` and builtin type objects
 
@@ -554,7 +553,6 @@ No heroic method splitting or spilling is attempted.
 ## 14. Toolchain and build
 
 - Target Java 28. Until GA, use early-access build. When GA is available, use GA.
-- ula4j does not declare any value classes. `--enable-preview` is not enabled for the build. ula4j must run on Java 28 with `--enable-preview`, and this is tested at runtime.
 - Use ASM 9.11.
 - The CPython semantic reference and test version is Python 3.14.
 - The compiler grammar should track the selected CPython version closely for accepted syntax, without implementing unrelated language features.
@@ -612,7 +610,6 @@ Tests must verify:
 ### 15.4 Bytecode and build tests
 
 - CI checks the expected `typeSwitch` bootstrap shape for every intrinsic.
-- Runs with and without `--enable-preview` are tested separately.
 - Class-file and ASM compatibility is verified for the pinned JDK.
 
 ### 15.5 Benchmarks
@@ -640,5 +637,6 @@ These decisions must be resolved as implementation approaches the relevant area;
 5. **Output formatting:** decide whether `print(x, end=...)` is supported despite keyword arguments otherwise being rejected. `%` string formatting is supported; `str.format` is not.
 6. **Tuple record arities:** validate the proposed specialized arities 1–4 through benchmarks.
 7. **Parser implementation:** handwritten parser versus generated parser.
-8. **Value-class gating:** resolved. ula4j declares no value classes and is tested on Java 28 with `--enable-preview` (§14).
-9. **Specializer policy:** select the per-call-site polymorphism limit, relinking policy, and megamorphic fallback
+8. **Specializer policy:** select the per-call-site polymorphism limit, relinking policy, and megamorphic fallback threshold.
+9. **Range API details:** `range` bounds and steps use arbitrary-precision integers; `len(range(...))` follows CPython and raises `OverflowError` when the length cannot fit `Py_ssize_t`. Confirm the full supported range operation surface and builtin signature.
+10. **Function method surface:** decide whether any function methods are supported; do not infer support merely because function receivers are listed as a method-call category.
