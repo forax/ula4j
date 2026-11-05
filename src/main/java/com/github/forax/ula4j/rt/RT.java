@@ -56,8 +56,6 @@ public final class RT {
 
     private static final int MAX_DEPTH = 3;
 
-    record CallSiteInfo() {}
-
     private final InliningCache root;
     private final int depth;
     private final MethodHandles.Lookup lookup;
@@ -121,7 +119,11 @@ public final class RT {
     }
   }
 
-  public static CallSite bsmTypeSwitch(MethodHandles.Lookup lookup, String name, MethodType type, Class<?>[] caseTypes) {
-    return new InliningCache(lookup, caseTypes);
+  public static CallSite bsmTypeSwitch(MethodHandles.Lookup lookup, String unused, MethodType unused2, Object... bsmArgs) {
+    var caseClasses = new Class<?>[bsmArgs.length];
+    for (var i = 0; i < bsmArgs.length; i++) {
+      caseClasses[i] = (Class<?>) bsmArgs[i];
+    }
+    return new InliningCache(lookup, caseClasses);
   }
 }

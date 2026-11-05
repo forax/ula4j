@@ -22,7 +22,7 @@ public final class Specializer {
   private static final Handle BSM_TYPE_SWITCH = new Handle(Opcodes.H_INVOKESTATIC,
       RT.class.getName().replace('.', '/'),
       "bsmTypeSwitch",
-      "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Class;)Ljava/lang/invoke/CallSite;",
+      "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;",
       false);
   private static final Handle BSM_SPECIALIZE = new Handle(Opcodes.H_INVOKESTATIC,
       RT.class.getName().replace('.', '/'),
@@ -30,7 +30,7 @@ public final class Specializer {
       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/Class;)Ljava/lang/invoke/CallSite;",
       false);
 
-  private static boolean isIntrinsic(String methodName) {
+  private static boolean isIntrinsicName(String methodName) {
     return methodName.startsWith("$") && methodName.endsWith("$");
   }
 
@@ -57,7 +57,7 @@ public final class Specializer {
 
       @Override
       public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-        if (!isIntrinsic(name)) {
+        if (!isIntrinsicName(name)) {
           return null;
         }
 
@@ -71,7 +71,8 @@ public final class Specializer {
           public void visitInvokeDynamicInsn(String name, String descriptor, Handle bsm, Object... bsmArgs) {
             if (bsm.getOwner().equals("java/lang/runtime/SwitchBootstraps")
                 && bsm.getName().equals("typeSwitch")
-                && bsm.getDesc().equals("(Ljava/lang/Object;I)I")) {
+                && bsm.getDesc().equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;")
+                && descriptor.equals("(Ljava/lang/Object;I)I")) {
               super.visitInvokeDynamicInsn(name, descriptor, BSM_TYPE_SWITCH, bsmArgs);
               return;
             }
@@ -80,7 +81,7 @@ public final class Specializer {
 
           @Override
           public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-            if (opcode == Opcodes.INVOKESTATIC && isIntrinsic(name)) {
+            if (opcode == Opcodes.INVOKESTATIC && isIntrinsicName(name)) {
               super.visitInvokeDynamicInsn(name, descriptor, BSM_SPECIALIZE, Type.getObjectType(owner));
               return;
             }
