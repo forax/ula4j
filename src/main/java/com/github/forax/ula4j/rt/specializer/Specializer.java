@@ -19,6 +19,10 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 public final class Specializer {
+  private Specializer() {
+    throw new AssertionError();
+  }
+
   private static final Handle BSM_TYPE_SWITCH = new Handle(Opcodes.H_INVOKESTATIC,
       RT.class.getName().replace('.', '/'),
       "bsmTypeSwitch",
