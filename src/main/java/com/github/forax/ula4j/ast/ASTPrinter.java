@@ -7,15 +7,15 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /** Dumps an AST as an s-expression; with {@code positions}, every node is followed by {@code @line:column}. */
-final class AstPrinter {
+final class ASTPrinter {
   private final boolean positions;
 
-  private AstPrinter(boolean positions) {
+  private ASTPrinter(boolean positions) {
     this.positions = positions;
   }
 
   static String print(Script script, boolean positions) {
-    return new AstPrinter(positions).block(script.body());
+    return new ASTPrinter(positions).block(script.body());
   }
 
   private String at(int line, int column) {

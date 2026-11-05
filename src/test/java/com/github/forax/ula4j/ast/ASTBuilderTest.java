@@ -7,11 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public final class ASTBuilderTest {
   private static void assertAst(String source, String expected) {
-    assertEquals(expected, AstPrinter.print(ASTBuilder.createScript(source), false), source);
+    assertEquals(expected, ASTPrinter.print(ASTBuilder.createScript(source), false), source);
   }
 
   private static void assertAstAt(String source, String expected) {
-    assertEquals(expected, AstPrinter.print(ASTBuilder.createScript(source), true), source);
+    assertEquals(expected, ASTPrinter.print(ASTBuilder.createScript(source), true), source);
   }
 
   private static void assertUnsupported(String source, String construct, int line, int column) {
