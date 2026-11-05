@@ -38,6 +38,15 @@ public final class Specializer {
     return methodName.startsWith("$") && methodName.endsWith("$");
   }
 
+  private static boolean allBsmArgsAreClasses(Object[] elements) {
+    for(Object element : elements) {
+      if(!(element instanceof Type t) || (t.getSort() != Type.OBJECT && t.getSort() != Type.ARRAY)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   public static Map<String, Supplier<MethodHandle>> specialize(MethodHandles.Lookup lookup, Class<?> clazz) {
     var filename = "/" + clazz.getName().replace('.', '/') + ".class";
     byte[] classfile;
@@ -76,7 +85,8 @@ public final class Specializer {
             if (bsm.getOwner().equals("java/lang/runtime/SwitchBootstraps")
                 && bsm.getName().equals("typeSwitch")
                 && bsm.getDesc().equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;")
-                && descriptor.equals("(Ljava/lang/Object;I)I")) {
+                && descriptor.equals("(Ljava/lang/Object;I)I")
+                && allBsmArgsAreClasses(bsmArgs)) {
               super.visitInvokeDynamicInsn(name, descriptor, BSM_TYPE_SWITCH, bsmArgs);
               return;
             }
@@ -119,5 +129,5 @@ public final class Specializer {
       }
     }, 0);
     return Map.copyOf(specializedMap);
-  };
+  }
 }
