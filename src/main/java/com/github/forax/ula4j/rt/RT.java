@@ -33,8 +33,8 @@ public final class RT {
     };
   }
 
-  public static CallSite bsmSpecialize(MethodHandles.Lookup lookup, String name, MethodType type, Class<?> intrisicClass) {
-    var map = SPECIALIZER_CLASS_VALUE.get(intrisicClass);
+  public static CallSite bsmSpecialize(MethodHandles.Lookup lookup, String name, MethodType type, Class<?> intrinsicClass) {
+    var map = SPECIALIZER_CLASS_VALUE.get(intrinsicClass);
     var target = map.get(name + type.toMethodDescriptorString()).get();
     return new ConstantCallSite(target);
   }
