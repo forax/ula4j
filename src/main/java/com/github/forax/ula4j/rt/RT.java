@@ -22,7 +22,13 @@ public final class RT {
     SPECIALIZER_CLASS_VALUE = new ClassValue<>() {
       @Override
       protected Map<String, Supplier<MethodHandle>> computeValue(Class<?> type) {
-        return Specializer.specialize(lookup, type);
+        MethodHandles.Lookup teleportedLookup;
+        try {
+          teleportedLookup = MethodHandles.privateLookupIn(type, lookup);
+        } catch (IllegalAccessException e) {
+          throw (IllegalAccessError) new IllegalAccessError().initCause(e);
+        }
+        return Specializer.specialize(teleportedLookup, type);
       }
     };
   }
@@ -42,7 +48,7 @@ public final class RT {
         FALLBACK = lookup.findVirtual(InliningCache.class, "fallback",
             MethodType.methodType(int.class, Object.class, int.class));
         TEST = lookup.findStatic(InliningCache.class, "test",
-            MethodType.methodType(boolean.class, Object.class, Object.class, int.class));
+            MethodType.methodType(boolean.class, Class.class, Object.class, int.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
@@ -75,8 +81,8 @@ public final class RT {
       setTarget(FALLBACK.bindTo(this));
     }
 
-    private static boolean test(Object o1, Object o2, int alwaysZero) {
-      return o1 == o2;
+    private static boolean test(Class<?> receiverClass, Object o, int alwaysZero) {
+      return receiverClass == o.getClass();
     }
 
     private int findCaseIndex(Class<?> receiverClass) {
@@ -86,7 +92,7 @@ public final class RT {
           return i;
         }
       }
-      return -1;
+      return caseClasses.length;
     }
 
     public int fallback(Object receiver, int alwaysZero) {
@@ -94,12 +100,14 @@ public final class RT {
       var index = findCaseIndex(receiverClass);
 
       if (depth == MAX_DEPTH) {
+        // callsite is megamorphic, fallback to jdk switch on types
         root.setTarget(
             SwitchBootstraps.typeSwitch(lookup, null, type(), (Object[]) caseClasses)
                 .dynamicInvoker());
         return index;
       }
 
+      // install a guard
       var test = TEST.bindTo(receiverClass);
       var target = MethodHandles.dropArguments(
           MethodHandles.constant(int.class, index),

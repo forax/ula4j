@@ -19,12 +19,12 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 public final class Specializer {
-  private static final Handle BSM_TYPE_SWITCH = new Handle(Opcodes.H_GETSTATIC,
+  private static final Handle BSM_TYPE_SWITCH = new Handle(Opcodes.H_INVOKESTATIC,
       RT.class.getName().replace('.', '/'),
       "bsmTypeSwitch",
       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Class;)Ljava/lang/invoke/CallSite;",
       false);
-  private static final Handle BSM_SPECIALIZE = new Handle(Opcodes.H_GETSTATIC,
+  private static final Handle BSM_SPECIALIZE = new Handle(Opcodes.H_INVOKESTATIC,
       RT.class.getName().replace('.', '/'),
       "bsmSpecialize",
       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/Class;)Ljava/lang/invoke/CallSite;",
@@ -62,7 +62,8 @@ public final class Specializer {
         }
 
         var writer = new ClassWriter(0);
-        writer.visit(version, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, name, null, "java/lang/Object", null);
+        var hiddenInternalName = clazz.getPackageName().replace('.', '/') + "/" + name;
+        writer.visit(version, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, hiddenInternalName, null, "java/lang/Object", null);
 
         var mv = writer.visitMethod(access, name, descriptor, signature, exceptions);
         return new MethodVisitor(Opcodes.ASM9, mv) {
