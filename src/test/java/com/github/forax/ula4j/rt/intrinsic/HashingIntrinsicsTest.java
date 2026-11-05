@@ -1,10 +1,9 @@
-package com.github.forax.ula4j.rt.intrisic;
+package com.github.forax.ula4j.rt.intrinsic;
 
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
 import com.github.forax.ula4j.rt.PyTuple.PyTupleN;
 import com.github.forax.ula4j.rt.error.PyTypeError;
-import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
