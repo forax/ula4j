@@ -33,9 +33,13 @@ public final class RT {
     };
   }
 
-  public static CallSite bsmSpecialize(MethodHandles.Lookup lookup, String name, MethodType type, Class<?> intrinsicClass) {
+  public static CallSite bsmSpecialize(MethodHandles.Lookup unused, String name, MethodType type, Class<?> intrinsicClass) {
     var map = SPECIALIZER_CLASS_VALUE.get(intrinsicClass);
-    var target = map.get(name + type.toMethodDescriptorString()).get();
+    var factory = map.get(name + type.toMethodDescriptorString());
+    if (factory == null) {
+      throw new BootstrapMethodError("no specialized factory found for " + intrinsicClass.getName() + "." + name + type.toMethodDescriptorString());
+    }
+    var target = factory.get();
     return new ConstantCallSite(target);
   }
 
@@ -80,6 +84,7 @@ public final class RT {
     }
 
     private static boolean test(Class<?> receiverClass, Object o, int alwaysZero) {
+      // null is an internal bug, so let's throw a NPE
       return receiverClass == o.getClass();
     }
 

@@ -211,15 +211,14 @@ public final class RTTest {
 
     @Test
     public void unknownIntrinsicNameIsRejected() {
-      // today this is a NullPointerException from the map lookup; a dedicated diagnostic would be nicer
-      assertThrows(RuntimeException.class,
+      assertThrows(BootstrapMethodError.class,
           () -> RT.bsmSpecialize(LOOKUP, "$nope$", DESCRIBE, SpecializerFixtures.class));
     }
 
     @Test
     public void aDescriptorThatDoesNotMatchTheIntrinsicIsRejected() {
       var wrongType = MethodType.methodType(String.class, String.class);
-      assertThrows(RuntimeException.class,
+      assertThrows(BootstrapMethodError.class,
           () -> RT.bsmSpecialize(LOOKUP, "$describe$", wrongType, SpecializerFixtures.class));
     }
   }
