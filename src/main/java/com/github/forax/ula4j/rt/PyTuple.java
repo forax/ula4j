@@ -7,6 +7,17 @@ import static java.util.Objects.requireNonNull;
 
 public sealed interface PyTuple {
 
+  record PyTuple1(Object item0) implements PyTuple {
+    public PyTuple1 {
+      requireNonNull(item0);
+    }
+
+    @Override
+    public String toString() {
+      return "PyTuple1(" + item0 + ")";
+    }
+  }
+
   record PyTuple2(Object item0, Object item1) implements PyTuple {
     public PyTuple2 {
       requireNonNull(item0);
@@ -32,17 +43,17 @@ public sealed interface PyTuple {
     }
   }
 
-  record PyTuple4(Object item0, Object item1, Object item2, Object item4) implements PyTuple {
+  record PyTuple4(Object item0, Object item1, Object item2, Object item3) implements PyTuple {
     public PyTuple4 {
       requireNonNull(item0);
       requireNonNull(item1);
       requireNonNull(item2);
-      requireNonNull(item4);
+      requireNonNull(item3);
     }
 
     @Override
     public String toString() {
-      return "PyTuple4(" +  item0 + ", " + item1 + ", " + item2 + ", " + item4 + ")";
+      return "PyTuple4(" +  item0 + ", " + item1 + ", " + item2 + ", " + item3 + ")";
     }
   }
 
@@ -56,14 +67,14 @@ public sealed interface PyTuple {
 
     @Override
     public Object[] items() {
-      throw new AssertionError("use item(index) instead");
+      throw new AssertionError("use itemAt(index) instead");
     }
 
-    public int length() {
+    public int itemCount() {
       return items.length;
     }
 
-    public Object item(int index) {
+    public Object itemAt(int index) {
       return items[index];
     }
 

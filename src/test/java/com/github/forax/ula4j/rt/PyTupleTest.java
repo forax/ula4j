@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt;
 
+import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple3;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple4;
@@ -13,6 +14,34 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public final class PyTupleTest {
+
+  @Nested
+  public final class PyTuple1Test {
+
+    @Test
+    public void tuple1Accessors() {
+      var tuple = new PyTuple1(1L);
+      assertEquals(1L, tuple.item0());
+    }
+
+    @Test
+    public void tuple2RejectsJavaNull() {
+      assertThrows(NullPointerException.class, () -> new PyTuple1(null));
+    }
+
+    @Test
+    public void tuple2AcceptsPyNone() {
+      var tuple = new PyTuple1(PyNone.INSTANCE);
+      assertSame(PyNone.INSTANCE, tuple.item0());
+    }
+
+    @Test
+    public void tuple2ToString() {
+      assertEquals("PyTuple1(a)", new PyTuple1("a").toString());
+      assertEquals("PyTuple1(true)", new PyTuple1(true).toString());
+      assertEquals("PyTuple1(None)", new PyTuple1(PyNone.INSTANCE).toString());
+    }
+  }
 
   @Nested
   public final class PyTuple2Test {
@@ -78,7 +107,7 @@ public final class PyTupleTest {
       assertEquals(1L, tuple.item0());
       assertEquals(2L, tuple.item1());
       assertEquals(3L, tuple.item2());
-      assertEquals(4L, tuple.item4());  // the last component is currently named item4
+      assertEquals(4L, tuple.item3());
     }
 
     @Test
@@ -101,18 +130,18 @@ public final class PyTupleTest {
     @Test
     public void tupleNLengthAndItems() {
       var tuple = new PyTupleN(new Object[]{1L, "a", PyNone.INSTANCE, true, 2.5});
-      assertEquals(5, tuple.length());
-      assertEquals(1L, tuple.item(0));
-      assertEquals("a", tuple.item(1));
-      assertSame(PyNone.INSTANCE, tuple.item(2));
-      assertEquals(true, tuple.item(3));
-      assertEquals(2.5, tuple.item(4));
+      assertEquals(5, tuple.itemCount());
+      assertEquals(1L, tuple.itemAt(0));
+      assertEquals("a", tuple.itemAt(1));
+      assertSame(PyNone.INSTANCE, tuple.itemAt(2));
+      assertEquals(true, tuple.itemAt(3));
+      assertEquals(2.5, tuple.itemAt(4));
     }
 
     @Test
     public void tupleNCanBeEmpty() {
       var tuple = new PyTupleN(new Object[0]);
-      assertEquals(0, tuple.length());
+      assertEquals(0, tuple.itemCount());
       assertEquals("PyTupleN()", tuple.toString());
     }
 
@@ -120,8 +149,8 @@ public final class PyTupleTest {
     public void tupleNCanBeSmallerThanFiveForGenericUse() {
       // the choice of representation is a performance property only, so PyTupleN must work for any size
       var tuple = new PyTupleN(new Object[]{1L, 2L});
-      assertEquals(2, tuple.length());
-      assertEquals(2L, tuple.item(1));
+      assertEquals(2, tuple.itemCount());
+      assertEquals(2L, tuple.itemAt(1));
     }
 
     @Test
@@ -130,8 +159,8 @@ public final class PyTupleTest {
       var tuple = new PyTupleN(array);
       array[0] = 99L;
       array[4] = "changed";
-      assertEquals(1L, tuple.item(0));
-      assertEquals(5L, tuple.item(4));
+      assertEquals(1L, tuple.itemAt(0));
+      assertEquals(5L, tuple.itemAt(4));
     }
 
     @Test
@@ -148,8 +177,8 @@ public final class PyTupleTest {
     @Test
     public void tupleNItemRejectsOutOfRangeIndexes() {
       var tuple = new PyTupleN(new Object[]{1L, 2L, 3L});
-      assertThrows(ArrayIndexOutOfBoundsException.class, () -> tuple.item(-1));
-      assertThrows(ArrayIndexOutOfBoundsException.class, () -> tuple.item(3));
+      assertThrows(ArrayIndexOutOfBoundsException.class, () -> tuple.itemAt(-1));
+      assertThrows(ArrayIndexOutOfBoundsException.class, () -> tuple.itemAt(3));
     }
 
     @Test
@@ -206,6 +235,7 @@ public final class PyTupleTest {
 
     @Test
     public void everyShapeIsCoveredByAnExhaustiveSwitch() {
+      assertEquals(1, arity(new PyTuple1(1L)));
       assertEquals(2, arity(new PyTuple2(1L, 2L)));
       assertEquals(3, arity(new PyTuple3(1L, 2L, 3L)));
       assertEquals(4, arity(new PyTuple4(1L, 2L, 3L, 4L)));
@@ -215,10 +245,11 @@ public final class PyTupleTest {
 
     private static int arity(PyTuple tuple) {
       return switch (tuple) {  // no default: this fails to compile if a new shape is added to the sealed interface
+        case PyTuple1 _ -> 1;
         case PyTuple2 _ -> 2;
         case PyTuple3 _ -> 3;
         case PyTuple4 _ -> 4;
-        case PyTupleN n -> n.length();
+        case PyTupleN n -> n.itemCount();
       };
     }
   }
