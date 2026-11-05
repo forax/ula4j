@@ -54,7 +54,7 @@ final class ASTPrinter {
   }
 
   private String block(Block block) {
-    return node("block", block.lineNumber(), block.column(), block.stmts().stream().map(this::stmt).toList());
+    return node("block", block.line(), block.column(), block.stmts().stream().map(this::stmt).toList());
   }
 
   private String stmt(Stmt stmt) {
@@ -90,7 +90,7 @@ final class ASTPrinter {
   }
 
   private String expr(Expr expr) {
-    var l = expr.lineNumber();
+    var l = expr.line();
     var c = expr.column();
     return switch (expr) {
       case Expr.Name e -> leaf(e.id(), l, c);
@@ -123,7 +123,7 @@ final class ASTPrinter {
       parts.add(e.ops().get(i).symbol());
       parts.add(expr(e.rest().get(i)));
     }
-    return node("compare", e.lineNumber(), e.column(), parts);
+    return node("compare", e.line(), e.column(), parts);
   }
 
   private static String literal(Object value) {

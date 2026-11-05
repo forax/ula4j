@@ -6,7 +6,7 @@ import java.util.List;
 import static java.util.Objects.requireNonNull;
 
 public sealed interface Expr {
-  int lineNumber();
+  int line();
   int column();
 
   enum BinaryOperator {
@@ -34,14 +34,14 @@ public sealed interface Expr {
     public String symbol() { return symbol; }
   }
 
-  record Name(String id, int lineNumber, int column) implements Expr {
+  record Name(String id, int line, int column) implements Expr {
     public Name {
       requireNonNull(id);
     }
   }
 
   /** The value is a Long, a BigInteger that does not fit in a long, a Double, a String or a Boolean. */
-  record Literal(Object value, int lineNumber, int column) implements Expr {
+  record Literal(Object value, int line, int column) implements Expr {
     public Literal {
       switch (value) {
         case Long _, Double _, String _, Boolean _ -> { }
@@ -55,9 +55,9 @@ public sealed interface Expr {
     }
   }
 
-  record NoneLiteral(int lineNumber, int column) implements Expr {}
+  record NoneLiteral(int line, int column) implements Expr {}
 
-  record BinOp(BinaryOperator op, Expr left, Expr right, int lineNumber, int column) implements Expr {
+  record BinOp(BinaryOperator op, Expr left, Expr right, int line, int column) implements Expr {
     public BinOp {
       requireNonNull(op);
       requireNonNull(left);
@@ -65,27 +65,27 @@ public sealed interface Expr {
     }
   }
 
-  record UnaryOp(UnaryOperator op, Expr operand, int lineNumber, int column) implements Expr {
+  record UnaryOp(UnaryOperator op, Expr operand, int line, int column) implements Expr {
     public UnaryOp {
       requireNonNull(op);
       requireNonNull(operand);
     }
   }
 
-  record Not(Expr operand, int lineNumber, int column) implements Expr {
+  record Not(Expr operand, int line, int column) implements Expr {
     public Not {
       requireNonNull(operand);
     }
   }
 
-  record And(Expr left, Expr right, int lineNumber, int column) implements Expr {
+  record And(Expr left, Expr right, int line, int column) implements Expr {
     public And {
       requireNonNull(left);
       requireNonNull(right);
     }
   }
 
-  record Or(Expr left, Expr right, int lineNumber, int column) implements Expr {
+  record Or(Expr left, Expr right, int line, int column) implements Expr {
     public Or {
       requireNonNull(left);
       requireNonNull(right);
@@ -93,7 +93,7 @@ public sealed interface Expr {
   }
 
   /** A comparison chain {@code first ops[0] rest[0] ops[1] rest[1] ...}; a single comparison is a chain of one. */
-  record Compare(Expr first, List<CompareOperator> ops, List<Expr> rest, int lineNumber, int column)
+  record Compare(Expr first, List<CompareOperator> ops, List<Expr> rest, int line, int column)
       implements Expr {
     public Compare {
       requireNonNull(first);
@@ -105,7 +105,7 @@ public sealed interface Expr {
     }
   }
 
-  record Conditional(Expr test, Expr then, Expr orElse, int lineNumber, int column) implements Expr {
+  record Conditional(Expr test, Expr then, Expr orElse, int line, int column) implements Expr {
     public Conditional {
       requireNonNull(test);
       requireNonNull(then);
@@ -113,7 +113,7 @@ public sealed interface Expr {
     }
   }
 
-  record Call(Expr func, List<Expr> args, int lineNumber, int column) implements Expr {
+  record Call(Expr func, List<Expr> args, int line, int column) implements Expr {
     public Call {
       requireNonNull(func);
       args = List.copyOf(args);
@@ -121,7 +121,7 @@ public sealed interface Expr {
   }
 
   /** {@code receiver.name(args)}; the only form of attribute access that is accepted. */
-  record MethodCall(Expr receiver, String name, List<Expr> args, int lineNumber, int column)
+  record MethodCall(Expr receiver, String name, List<Expr> args, int line, int column)
       implements Expr {
     public MethodCall {
       requireNonNull(receiver);
@@ -131,7 +131,7 @@ public sealed interface Expr {
   }
 
   /** The index is an arbitrary expression, a {@link Slice} or a {@link TupleDisplay} (possibly containing slices). */
-  record Subscript(Expr value, Expr index, int lineNumber, int column) implements Expr {
+  record Subscript(Expr value, Expr index, int line, int column) implements Expr {
     public Subscript {
       requireNonNull(value);
       requireNonNull(index);
@@ -139,7 +139,7 @@ public sealed interface Expr {
   }
 
   /** Omitted parts are {@link NoneLiteral}s. */
-  record Slice(Expr lower, Expr upper, Expr step, int lineNumber, int column) implements Expr {
+  record Slice(Expr lower, Expr upper, Expr step, int line, int column) implements Expr {
     public Slice {
       requireNonNull(lower);
       requireNonNull(upper);
@@ -147,13 +147,13 @@ public sealed interface Expr {
     }
   }
 
-  record ListDisplay(List<Expr> elements, int lineNumber, int column) implements Expr {
+  record ListDisplay(List<Expr> elements, int line, int column) implements Expr {
     public ListDisplay {
       elements = List.copyOf(elements);
     }
   }
 
-  record TupleDisplay(List<Expr> elements, int lineNumber, int column) implements Expr {
+  record TupleDisplay(List<Expr> elements, int line, int column) implements Expr {
     public TupleDisplay {
       elements = List.copyOf(elements);
     }
@@ -166,7 +166,7 @@ public sealed interface Expr {
     }
   }
 
-  record DictDisplay(List<DictEntry> entries, int lineNumber, int column) implements Expr {
+  record DictDisplay(List<DictEntry> entries, int line, int column) implements Expr {
     public DictDisplay {
       entries = List.copyOf(entries);
     }
