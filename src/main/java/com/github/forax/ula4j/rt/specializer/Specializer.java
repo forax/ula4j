@@ -1,6 +1,8 @@
 package com.github.forax.ula4j.rt.specializer;
 
 import com.github.forax.ula4j.rt.RT;
+import com.github.forax.ula4j.rt.intrinsic.Intrinsic;
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -35,6 +37,7 @@ public final class Specializer {
       false);
 
   private static final int INTRINSIC_ACCESS = Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC;
+  private static final String INTRINSIC_DESCRIPTOR = Intrinsic.class.descriptorString();
 
   private static boolean isIntrinsicName(String methodName) {
     return methodName.startsWith("$") && methodName.endsWith("$");
@@ -85,6 +88,16 @@ public final class Specializer {
 
         var mv = writer.visitMethod(access, methodName, methodDescriptor, signature, exceptions);
         return new MethodVisitor(Opcodes.ASM9, mv) {
+          private boolean annotated;
+
+          @Override
+          public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+            if (INTRINSIC_DESCRIPTOR.equals(descriptor)) {
+              annotated = true;
+            }
+            return null;
+          }
+
           @Override
           public void visitInvokeDynamicInsn(String name, String descriptor, Handle bsm, Object... bsmArgs) {
             if (bsm.getOwner().equals("java/lang/runtime/SwitchBootstraps")
@@ -116,6 +129,11 @@ public final class Specializer {
           @Override
           public void visitEnd() {
             super.visitEnd();
+
+            if (!annotated) {
+              throw new IncompatibleClassChangeError("method " + ownerInternalName + "." + methodName + methodDescriptor +
+                  " is not annotated by @Intrinsic");
+            }
 
             writer.visitEnd();
             var content = writer.toByteArray();
