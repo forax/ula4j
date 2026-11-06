@@ -4,7 +4,7 @@ import com.github.forax.ula4j.rt.error.PyTypeError;
 
 import java.lang.invoke.MethodHandles;
 
-/// Hand-written intrinsics following the shape required by the implementation plan (§11).
+/// Handwritten intrinsics
 public final class SpecializerFixtures {
   private SpecializerFixtures() {}
 
@@ -48,13 +48,6 @@ public final class SpecializerFixtures {
 
   public static double $twice$(double value) {
     return value * 2.0;
-  }
-
-  public static long $countdown$(long n) {
-    if (n <= 0) {
-      return 0;
-    }
-    return 1 + $countdown$(n - 1);
   }
 
   public static String $viaPrivateHelper$(Object value) {

@@ -62,23 +62,25 @@ public final class Specializer {
     var reader = new ClassReader(classfile);
     reader.accept(new ClassVisitor(Opcodes.ASM9) {
       private int version;
+      private String ownerInternalName;
 
       @Override
       public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
         this.version = version;
+        this.ownerInternalName = name;
       }
 
       @Override
-      public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-        if (!isIntrinsicName(name)) {
+      public MethodVisitor visitMethod(int access, String methodName, String methodDescriptor, String signature, String[] exceptions) {
+        if (!isIntrinsicName(methodName)) {
           return null;
         }
 
         var writer = new ClassWriter(0);
-        var hiddenInternalName = clazz.getPackageName().replace('.', '/') + "/" + name;
+        var hiddenInternalName = clazz.getPackageName().replace('.', '/') + "/" + methodName;
         writer.visit(version, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, hiddenInternalName, null, "java/lang/Object", null);
 
-        var mv = writer.visitMethod(access, name, descriptor, signature, exceptions);
+        var mv = writer.visitMethod(access, methodName, methodDescriptor, signature, exceptions);
         return new MethodVisitor(Opcodes.ASM9, mv) {
           @Override
           public void visitInvokeDynamicInsn(String name, String descriptor, Handle bsm, Object... bsmArgs) {
@@ -96,6 +98,9 @@ public final class Specializer {
           @Override
           public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
             if (opcode == Opcodes.INVOKESTATIC && isIntrinsicName(name)) {
+              if (owner.equals(ownerInternalName) && name.equals(methodName) && descriptor.equals(methodDescriptor)) {
+                throw new IncompatibleClassChangeError("Recursive call method " + ownerInternalName + "." + name + descriptor);
+              }
               super.visitInvokeDynamicInsn(name, descriptor, BSM_SPECIALIZE, Type.getObjectType(owner));
               return;
             }
@@ -109,14 +114,14 @@ public final class Specializer {
             writer.visitEnd();
             var content = writer.toByteArray();
 
-            specializedMap.put(name + descriptor, () -> {
+            specializedMap.put(methodName + methodDescriptor, () -> {
               try {
                 var specializedLookup = lookup.defineHiddenClass(content, true, MethodHandles.Lookup.ClassOption.NESTMATE);
 
                 return specializedLookup.findStatic(
                     specializedLookup.lookupClass(),
-                    name,
-                    MethodType.fromMethodDescriptorString(descriptor, lookup.lookupClass().getClassLoader()));
+                    methodName,
+                    MethodType.fromMethodDescriptorString(methodDescriptor, lookup.lookupClass().getClassLoader()));
 
               } catch (IllegalAccessException e) {
                 throw (IllegalAccessError) new IllegalAccessError().initCause(e);

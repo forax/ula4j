@@ -183,13 +183,6 @@ public final class SpecializerTest {
   }
 
   @Test
-  public void recursiveIntrinsicTerminatesAndComputesTheSameResult() throws Throwable {
-    var countdown = specialize("$countdown$", MethodType.methodType(long.class, long.class));
-    assertEquals(SpecializerFixtures.$countdown$(40), (long) countdown.invokeExact(40L));
-    assertEquals(0L, (long) countdown.invokeExact(0L));
-  }
-
-  @Test
   public void specializedCodeCanCallPrivateHelpersOfTheIntrinsicClass() throws Throwable {
     var viaHelper = specialize("$viaPrivateHelper$", DESCRIBE);
     assertEquals("secret:long", (String) viaHelper.invokeExact((Object) 1L));
