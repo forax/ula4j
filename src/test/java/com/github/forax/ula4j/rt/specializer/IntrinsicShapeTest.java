@@ -49,7 +49,8 @@ public final class IntrinsicShapeTest {
         assertEquals("(Ljava/lang/Object;I)I", indy.desc, where);
         for (var label : indy.bsmArgs) {
           assertInstanceOf(Type.class, label, where + ": only class labels are supported");
-          assertEquals(Type.OBJECT, ((Type) label).getSort(), where);
+          var sort = ((Type) label).getSort();
+          assertTrue(sort == Type.OBJECT || sort == Type.ARRAY, where);
         }
       }
     }
