@@ -72,7 +72,8 @@ public final class Specializer {
 
       @Override
       public MethodVisitor visitMethod(int access, String methodName, String methodDescriptor, String signature, String[] exceptions) {
-        if (!isIntrinsicName(methodName)) {
+        // $deserializeLambda$ is not public, so it should not be specializable
+        if (!(((access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC)) != 0) && isIntrinsicName(methodName))) {
           return null;
         }
 
