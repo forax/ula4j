@@ -14,6 +14,10 @@ import java.math.BigInteger;
 /// algorithm). The hashes of `str`, `tuple` and `None` are implementation details: they only
 /// guarantee that equal values have equal hashes, and must never be printed or asserted.
 public final class HashingIntrinsics {
+  private HashingIntrinsics() {
+    throw new AssertionError();
+  }
+
   private static final int HASH_BITS = 61;
   private static final long HASH_MODULUS = (1L << HASH_BITS) - 1;
   private static final BigInteger BIG_HASH_MODULUS = BigInteger.valueOf(HASH_MODULUS);
@@ -30,10 +34,6 @@ public final class HashingIntrinsics {
   private static final long XXPRIME_1 = 0x9E3779B185EBCA87L;
   private static final long XXPRIME_2 = 0xC2B2AE3D27D4EB4FL;
   private static final long XXPRIME_5 = 0x27D4EB2F165667C5L;
-
-  private HashingIntrinsics() {
-    throw new AssertionError("no instances");
-  }
 
   /// Returns the signed 64-bit hash value used by the 64-bit CPython runtime contract.
   @Intrinsic
