@@ -1,6 +1,8 @@
 package com.github.forax.ula4j.rt.specializer;
 
+import com.github.forax.ula4j.rt.intrinsic.EqualityIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
@@ -46,7 +48,15 @@ public final class IntrinsicShapeTest {
         if (!(insn instanceof InvokeDynamicInsnNode indy) || !isTypeSwitch(indy.bsm)) {
           continue;
         }
-        assertEquals("(Ljava/lang/Object;I)I", indy.desc, where);
+
+        // The descriptor should be (Lany object;I)I
+        var parameterTypes = Type.getArgumentTypes(indy.desc);
+        var returnType = Type.getReturnType(indy.desc);
+        assertEquals(2, parameterTypes.length);
+        assertEquals(Type.OBJECT, parameterTypes[0].getSort());
+        assertEquals(Type.INT_TYPE, parameterTypes[1]);
+        assertEquals(Type.INT_TYPE, returnType);
+
         for (var label : indy.bsmArgs) {
           assertInstanceOf(Type.class, label, where + ": only class labels are supported");
           var sort = ((Type) label).getSort();
@@ -71,9 +81,27 @@ public final class IntrinsicShapeTest {
     assertTrue(typeSwitchCount(SpecializerFixtures.class, "$overlap$") >= 1);
   }
 
+
+  // -- verify all existing intrinsics
+
   @Test
   public void hashingIntrinsicsHaveTheExpectedShape() throws IOException {
     assertTypeSwitchShape(HashingIntrinsics.class);
     assertTrue(typeSwitchCount(HashingIntrinsics.class, "$hash$") >= 1);
+  }
+
+  @Test
+  public void equalityIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(EqualityIntrinsics.class);
+    assertTrue(typeSwitchCount(EqualityIntrinsics.class, "$eq$") >= 1);
+  }
+
+  @Test
+  public void tupleIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(TupleIntrinsics.class);
+    assertTrue(typeSwitchCount(TupleIntrinsics.class, "$size$") >= 1);
+    assertTrue(typeSwitchCount(TupleIntrinsics.class, "$get$") >= 1);
+    //assertTrue(typeSwitchCount(TupleIntrinsics.class, "$concat$") >= 1);  // FIXME
+    //assertTrue(typeSwitchCount(TupleIntrinsics.class, "$repeat$") >= 1);  // FIXME
   }
 }

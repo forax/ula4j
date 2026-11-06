@@ -34,6 +34,8 @@ public final class Specializer {
       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/Class;)Ljava/lang/invoke/CallSite;",
       false);
 
+  private static final int INTRINSIC_ACCESS = Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC;
+
   private static boolean isIntrinsicName(String methodName) {
     return methodName.startsWith("$") && methodName.endsWith("$");
   }
@@ -73,7 +75,7 @@ public final class Specializer {
       @Override
       public MethodVisitor visitMethod(int access, String methodName, String methodDescriptor, String signature, String[] exceptions) {
         // $deserializeLambda$ is not public, so it should not be specializable
-        if (!(((access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC)) != 0) && isIntrinsicName(methodName))) {
+        if ((access & INTRINSIC_ACCESS) != INTRINSIC_ACCESS || !isIntrinsicName(methodName)) {
           return null;
         }
 
@@ -88,9 +90,12 @@ public final class Specializer {
             if (bsm.getOwner().equals("java/lang/runtime/SwitchBootstraps")
                 && bsm.getName().equals("typeSwitch")
                 && bsm.getDesc().equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;")
-                && descriptor.equals("(Ljava/lang/Object;I)I")
                 && allBsmArgsAreClasses(bsmArgs)) {
-              super.visitInvokeDynamicInsn(name, descriptor, BSM_TYPE_SWITCH, bsmArgs);
+              // The descriptor is (Ljava/lang/Object;I)I to reduce the number of LambdaFrom shape at runtime
+              // We also ensure that the restart is always 0 (we do not support "when" syntax)
+              super.visitInsn(Opcodes.POP);
+              super.visitInsn(Opcodes.ICONST_0);
+              super.visitInvokeDynamicInsn(name, "(Ljava/lang/Object;I)I", BSM_TYPE_SWITCH, bsmArgs);
               return;
             }
             super.visitInvokeDynamicInsn(name, descriptor, bsm, bsmArgs);
