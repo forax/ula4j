@@ -789,7 +789,7 @@ public final class ScopeAnalyzerTest {
     }
 
     @Test
-    public void capturedAfterIfElseAssignNotAccepted() {
+    public void capturedAfterIfElseAssignRejected() {
       assertRejected("""
                     def outer(c):
                         if c:
