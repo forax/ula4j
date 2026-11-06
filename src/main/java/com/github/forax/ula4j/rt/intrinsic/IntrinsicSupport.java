@@ -29,7 +29,7 @@ final class IntrinsicSupport {
     return switch (value) {
       case Long l -> l;
       case Boolean b -> b ? 1L : 0L;
-      default -> throw new AssertionError("not a small int: " + value);
+      default -> throw new AssertionError("expected Long/Boolean " + value);
     };
   }
 

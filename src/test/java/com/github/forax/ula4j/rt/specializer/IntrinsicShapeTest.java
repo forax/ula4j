@@ -1,5 +1,7 @@
 package com.github.forax.ula4j.rt.specializer;
 
+import com.github.forax.ula4j.rt.intrinsic.ArithmeticIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.EqualityIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
@@ -103,5 +105,19 @@ public final class IntrinsicShapeTest {
     assertTrue(typeSwitchCount(TupleIntrinsics.class, "$get$") >= 1);
     //assertTrue(typeSwitchCount(TupleIntrinsics.class, "$concat$") >= 1);  // FIXME
     //assertTrue(typeSwitchCount(TupleIntrinsics.class, "$repeat$") >= 1);  // FIXME
+  }
+
+  @Test
+  public void comparisonIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(ComparisonIntrinsics.class);
+    assertTrue(typeSwitchCount(ComparisonIntrinsics.class, "$eq$") >= 1);
+    assertTrue(typeSwitchCount(ComparisonIntrinsics.class, "$lt$") >= 1);
+  }
+
+  @Test
+  public void arithmeticIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(ArithmeticIntrinsics.class);
+    assertTrue(typeSwitchCount(ArithmeticIntrinsics.class, "$add$") >= 1);
+    assertTrue(typeSwitchCount(ArithmeticIntrinsics.class, "$neg$") >= 1);
   }
 }
