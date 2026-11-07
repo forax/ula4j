@@ -554,7 +554,7 @@ public final class BytecodeGeneratorTest {
     }
 
     @Test
-    public void captureByValueGlobal() throws Throwable {
+    public void captureByReferenceGlobal() throws Throwable {
       var source = """
           x = 1
           def outer():
