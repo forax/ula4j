@@ -110,6 +110,7 @@ final class FunctionSupport {
     var def = ctx.functionInfo(astIndex).def();
     var scope = ctx.scopeFor(def);
     ScopeAnalyzer.checkDefiniteAssignment(scope);
+
     var bytes = BytecodeGenerator.generateFunction(ctx, astIndex, def, scope);
     var className = BytecodeGenerator.functionClassName(astIndex, def).replace('/', '.');
     var clazz = ctx.loader().define(className, bytes);

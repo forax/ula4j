@@ -155,7 +155,8 @@ public final class BytecodeGenerator {
         emitter.declare(local);
       }
     }
-    emitter.registerNestedScopes(def.body().stmts());
+
+    scope.childByDef().forEach((ctx::registerScope));
 
     emitter.block(def.body());
     mv.visitFieldInsn(GETSTATIC, PY_NONE, "INSTANCE", "L" + PY_NONE + ";");
@@ -174,7 +175,7 @@ public final class BytecodeGenerator {
       }
     };
     cw.visit(V21, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalName, null, "java/lang/Object", null);
-    cw.visitSource("<ula4j>", null);
+    cw.visitSource("script", null);
     return cw;
   }
 
@@ -262,28 +263,6 @@ public final class BytecodeGenerator {
     int allocate() { return nextSlot++; }
 
     void declare(String name) { slots.put(name, allocate()); }
-
-    /// The scope of a nested function is only known through the scope of its parent.
-    void registerNestedScopes(List<Stmt> stmts) {
-      for (var stmt : stmts) {
-        switch (stmt) {
-          case Stmt.FunctionDef def -> ctx.registerScope(def, scope.inner(def));
-          case Stmt.If s -> {
-            registerNestedScopes(s.body().stmts());
-            registerNestedScopes(s.orElse().stmts());
-          }
-          case Stmt.While s -> {
-            registerNestedScopes(s.body().stmts());
-            registerNestedScopes(s.orElse().stmts());
-          }
-          case Stmt.For s -> {
-            registerNestedScopes(s.body().stmts());
-            registerNestedScopes(s.orElse().stmts());
-          }
-          default -> { }
-        }
-      }
-    }
 
     // ------------------------------------------------------------------ small helpers
 

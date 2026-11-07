@@ -118,11 +118,11 @@ public final class ModuleContext {
   }
 
   /// Scopes of nested functions are registered while their enclosing function is compiled.
-  public synchronized void registerScope(Stmt.FunctionDef def, FunctionScope scope) {
+  public void registerScope(Stmt.FunctionDef def, FunctionScope scope) {
     scopes.put(def, scope);
   }
 
-  public synchronized FunctionScope scopeOf(Stmt.FunctionDef def) {
+  public FunctionScope scopeOf(Stmt.FunctionDef def) {
     var scope = scopes.get(def);
     if (scope == null) {
       throw new IllegalStateException("no scope for '" + def.name() + "': its enclosing function is not compiled");
@@ -131,7 +131,7 @@ public final class ModuleContext {
   }
 
   /// The scope of a function, resolving it now if it is a module-level function.
-  synchronized FunctionScope scopeFor(Stmt.FunctionDef def) {
+  FunctionScope scopeFor(Stmt.FunctionDef def) {
     var scope = scopes.get(def);
     if (scope == null) {
       scope = ScopeAnalyzer.resolveTopLevel(def);  // passes 1-3 for the function and everything nested in it

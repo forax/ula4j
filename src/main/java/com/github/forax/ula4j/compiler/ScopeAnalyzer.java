@@ -80,13 +80,17 @@ public final class ScopeAnalyzer {
     }
 
     /** The scope of a function directly nested in this one; no analysis is run. */
-    public FunctionScope inner(Stmt.FunctionDef def) {
+    private FunctionScope inner(Stmt.FunctionDef def) {
       var child = childByDef.get(def);
       if (child == null) {
         throw new IllegalArgumentException(
             "'" + def.name() + "' is not directly nested in '" + functionName(this) + "'");
       }
       return child;
+    }
+
+    Map<Stmt.FunctionDef, FunctionScope> childByDef() {
+      return childByDef;
     }
   }
 
