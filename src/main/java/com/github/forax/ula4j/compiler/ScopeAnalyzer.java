@@ -314,20 +314,22 @@ public final class ScopeAnalyzer {
   // ---------------------------------------------------------------------
 
   private static void checkEffectivelyFinal(Scope scope) {
-    for (var name : scope.locals) {
-      var capturing = findCapturingChild(scope, name);
-      if (capturing == null) {
-        continue;
-      }
-      var count = scope.assignmentCounts.getOrDefault(name, 0);
-      var allowed = scope.params.contains(name) ? 0 : 1;
-      if (count > allowed) {
-        var msg = scope.params.contains(name)
-            ? "parameter '" + name + "' is captured by '" + capturing.function.name()
-            + "' but reassigned in '" + functionName(scope) + "'"
-            : "local variable '" + name + "' is captured by '" + capturing.function.name()
-            + "' but assigned " + count + " times (at most " + allowed + " allowed)";
-        throw new SemanticErrorException(msg, capturing.function.line(), capturing.function.column());
+    if (scope.isFunction) {  // optimization
+      for (var name : scope.locals) {
+        var capturing = findCapturingChild(scope, name);
+        if (capturing == null) {
+          continue;
+        }
+        var count = scope.assignmentCounts.getOrDefault(name, 0);
+        var allowed = scope.params.contains(name) ? 0 : 1;
+        if (count > allowed) {
+          var msg = scope.params.contains(name)
+              ? "parameter '" + name + "' is captured by '" + capturing.function.name()
+              + "' but reassigned in '" + functionName(scope) + "'"
+              : "local variable '" + name + "' is captured by '" + capturing.function.name()
+              + "' but assigned " + count + " times (at most " + allowed + " allowed)";
+          throw new SemanticErrorException(msg, capturing.function.line(), capturing.function.column());
+        }
       }
     }
     for (var child : scope.children) {
@@ -335,21 +337,9 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static boolean isCapturedIn(Scope scope, String name) {
-    if (scope.frees.contains(name)) {
-      return true;
-    }
-    for (var child : scope.children) {
-      if (isCapturedIn(child, name)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private static Scope findCapturingChild(Scope scope, String name) {
     for (var child : scope.children) {
-      if (isCapturedIn(child, name)) {
+      if (child.frees.contains(name)) {
         return child;
       }
     }

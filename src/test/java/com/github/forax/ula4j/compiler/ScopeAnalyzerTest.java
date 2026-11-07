@@ -392,6 +392,48 @@ public final class ScopeAnalyzerTest {
                         return fact
                     """, "assigned 2 times");
     }
+
+    @Test
+    public void shadowedInIntermediateFunctionIsNotACapture() {
+      assertAccepts("""
+          def outer():
+              x = 1
+              x = 2
+              def middle():
+                  x = 3
+                  def inner():
+                      return x
+                  return inner
+              return middle
+          """);
+    }
+
+    @Test
+    public void moduleVariableReassignedAndShadowedInFunction() {
+      assertAccepts("""
+          x = 1
+          x = 2
+          def outer():
+              x = 3
+              def inner():
+                  return x
+              return inner
+          """);
+    }
+
+    @Test
+    public void reassignedCapturedThroughIntermediateFunctionRejected() {
+      assertRejected("""
+          def outer():
+              x = 1
+              x = 2
+              def middle():
+                  def inner():
+                      return x
+                  return inner
+              return middle
+          """, "captured by 'middle'");
+    }
   }
 
   // =====================================================================
