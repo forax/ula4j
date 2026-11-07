@@ -8,15 +8,15 @@ import static java.util.Objects.requireNonNull;
 /// A Python function. `entry` has the type `(PyFunction, Object x arity [, PyTuple rest]) -> Object`,
 /// with the captured values already bound.
 public final class PyFunction {
-  private final String qualifiedName;
+  private final String name;  //FIXME use real Python qualified name
   private final List<String> parameters;
   private final boolean varargs;
   private MethodHandle entry;
   private boolean compiled;
 
-  public PyFunction(String qualifiedName, List<String> parameters, boolean varargs,
+  public PyFunction(String name, List<String> parameters, boolean varargs,
                     MethodHandle entry, boolean compiled) {
-    this.qualifiedName = requireNonNull(qualifiedName);
+    this.name = requireNonNull(name);
     this.parameters = List.copyOf(parameters);
     this.varargs = varargs;
     this.entry = requireNonNull(entry);
@@ -24,7 +24,7 @@ public final class PyFunction {
     super();
   }
 
-  public String name() { return qualifiedName; }
+  public String name() { return name; }
   public List<String> parameters() { return parameters; }
   public int arity() { return parameters.size(); }
   public boolean varargs() { return varargs; }
@@ -40,6 +40,6 @@ public final class PyFunction {
 
   @Override
   public String toString() {
-    return "<function " + qualifiedName + ">";
+    return "<function " + name + ">";
   }
 }

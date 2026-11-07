@@ -53,7 +53,7 @@ final class FunctionCallSite extends MutableCallSite {
     return adapted.invokeWithArguments(prepend(function, args));
   }
 
-  private synchronized void link(MethodHandle entry, MethodHandle adapted) {
+  private void link(MethodHandle entry, MethodHandle adapted) {
     if (depth >= MAX_DEPTH) {
       setTarget(MEGAMORPHIC.asCollector(Object[].class, argc).asType(type()));
       return;

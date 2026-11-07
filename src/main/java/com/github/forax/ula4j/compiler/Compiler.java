@@ -2,6 +2,8 @@ package com.github.forax.ula4j.compiler;
 
 import com.github.forax.ula4j.ast.ASTBuilder;
 import com.github.forax.ula4j.ast.Script;
+import com.github.forax.ula4j.rt.Dictionary;
+import com.github.forax.ula4j.rt.ModuleClassLoader;
 import com.github.forax.ula4j.rt.ModuleContext;
 
 import java.lang.invoke.MethodHandle;
@@ -16,9 +18,11 @@ public final class Compiler {
 
   /// Compiles the script eagerly and returns its `__main__`; function bodies are compiled on their first call.
   public static MethodHandle compile(ModuleContext ctx, Script script) {
-    var internalName = "com/github/forax/ula4j/gen/Script_" + ctx.nextScriptId();
-    var bytes = BytecodeGenerator.generateScript(ctx, script, internalName);
-    var cls = ctx.loader().define(internalName.replace('/', '.'), bytes);
+    var internalName = "com/github/forax/ula4j/gen/Script";
+    var dictionary = new Dictionary();
+    var bytes = BytecodeGenerator.generateScript(ctx, dictionary, script, internalName);
+    var loader = new ModuleClassLoader(ctx, dictionary);
+    var cls = loader.define(internalName.replace('/', '.'), bytes);
     try {
       return LOOKUP.findStatic(cls, "__main__", MethodType.methodType(void.class));
     } catch (NoSuchMethodException | IllegalAccessException e) {

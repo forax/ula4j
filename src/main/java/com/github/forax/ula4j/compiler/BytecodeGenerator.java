@@ -8,6 +8,7 @@ import com.github.forax.ula4j.ast.Target;
 import com.github.forax.ula4j.ast.UnsupportedSyntaxException;
 import com.github.forax.ula4j.compiler.ScopeAnalyzer.FunctionAnalysis;
 import com.github.forax.ula4j.compiler.ScopeAnalyzer.FunctionScope;
+import com.github.forax.ula4j.rt.Dictionary;
 import com.github.forax.ula4j.rt.ModuleContext;
 import com.github.forax.ula4j.rt.PyFunction;
 import com.github.forax.ula4j.rt.PyTuple;
@@ -78,12 +79,12 @@ public final class BytecodeGenerator {
   // ---------------------------------------------------------------------------------------------
   // naming and types, shared with the runtime
 
-  public static String functionClassName(int astIndex, Stmt.FunctionDef def) {
+  public static String functionClassName(Stmt.FunctionDef def) {
     var sanitized = new StringBuilder();
     for (var c : def.name().toCharArray()) {
       sanitized.append(Character.isLetterOrDigit(c) && c < 128 || c == '_' ? c : '_');
     }
-    return GEN_PACKAGE + "Fn_" + sanitized + "_" + astIndex;
+    return GEN_PACKAGE + "Fn_" + sanitized;
   }
 
   /// The variables a function receives through `insertArguments`, in `freeVariables` order.
@@ -111,12 +112,11 @@ public final class BytecodeGenerator {
   // ---------------------------------------------------------------------------------------------
   // entry points
 
-  public static byte[] generateScript(ModuleContext ctx, Script script, String internalName) {
-    ctx.registerFunctions(script);
+  public static byte[] generateScript(ModuleContext ctx, Dictionary dictionary, Script script, String internalName) {
     var cw = newClassWriter(internalName);
     var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "__main__", "()V", null, null);
     mv.visitCode();
-    var emitter = new Emitter(mv, ctx, null, null);
+    var emitter = new Emitter(mv, ctx,  dictionary, null, null);
     emitter.block(script.body());
     mv.visitInsn(RETURN);
     mv.visitMaxs(0, 0);
@@ -125,7 +125,7 @@ public final class BytecodeGenerator {
     return cw.toByteArray();
   }
 
-  public static byte[] generateFunction(ModuleContext ctx, int astIndex, Stmt.FunctionDef def, FunctionScope scope) {
+  public static byte[] generateFunction(ModuleContext ctx, Dictionary dictionary, Stmt.FunctionDef def, FunctionScope scope) {
     var analysis = scope.analysis();
     var captures = captureNames(def, analysis);
     var arity = def.parameters().size();
@@ -136,12 +136,12 @@ public final class BytecodeGenerator {
           + parameterCount + ", at most " + MAX_PARAMETERS + " are supported)", def.line(), def.column());
     }
 
-    var cw = newClassWriter(functionClassName(astIndex, def));
+    var cw = newClassWriter(functionClassName(def));
     var descriptor = bodyType(captures.size(), arity, varargs).toMethodDescriptorString();
     var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "body", descriptor, null, null);
     mv.visitCode();
 
-    var emitter = new Emitter(mv, ctx, def, scope);
+    var emitter = new Emitter(mv, ctx, dictionary, def, scope);
     for (var capture : captures) {
       emitter.declare(capture);
     }
@@ -243,6 +243,7 @@ public final class BytecodeGenerator {
   private static final class Emitter {
     private final MethodVisitor mv;
     private final ModuleContext ctx;
+    private final Dictionary dictionary;
     private final Stmt.FunctionDef function;  // null in __main__
     private final FunctionScope scope;        // null in __main__
     private final Set<String> frees;
@@ -252,12 +253,14 @@ public final class BytecodeGenerator {
     private Label breakTarget;
     private Label continueTarget;
 
-    Emitter(MethodVisitor mv, ModuleContext ctx, Stmt.FunctionDef function, FunctionScope scope) {
+    Emitter(MethodVisitor mv, ModuleContext ctx, Dictionary dictionary, Stmt.FunctionDef function, FunctionScope scope) {
       this.mv = mv;
       this.ctx = ctx;
+      this.dictionary = dictionary;
       this.function = function;
       this.scope = scope;
       this.frees = scope == null ? Set.of() : scope.analysis().freeVariables();
+      super();
     }
 
     int allocate() { return nextSlot++; }
@@ -454,7 +457,7 @@ public final class BytecodeGenerator {
       for (var capture : captures) {
         loadName(capture);
       }
-      mv.visitInvokeDynamicInsn("def", "(" + O.repeat(captures.size()) + ")" + O, BSM_DEF, ctx.idOf(def));
+      mv.visitInvokeDynamicInsn("def", "(" + O.repeat(captures.size()) + ")" + O, BSM_DEF, dictionary.register(def));
       storeName(def.name());
     }
 

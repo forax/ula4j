@@ -21,10 +21,10 @@ final class FunctionSupport {
   static {
     try {
       MAKE_FUNCTION = LOOKUP.findStatic(FunctionSupport.class, "makeFunction",
-          MethodType.methodType(PyFunction.class, ModuleContext.class, int.class, Object[].class));
+          MethodType.methodType(PyFunction.class, ModuleContext.class, Stmt.FunctionDef.class, Object[].class));
       COMPILE_AND_INVOKE = LOOKUP.findStatic(FunctionSupport.class, "compileAndInvoke",
           MethodType.methodType(Object.class,
-              ModuleContext.class, int.class, Object[].class, PyFunction.class, Object[].class));
+              ModuleContext.class, Stmt.FunctionDef.class, Object[].class, PyFunction.class, Object[].class));
       CELL_GET = LOOKUP.findVirtual(ModuleContext.GlobalCell.class, "get",
           MethodType.methodType(Object.class));
       CELL_SET = LOOKUP.findVirtual(ModuleContext.GlobalCell.class, "set",
@@ -50,8 +50,11 @@ final class FunctionSupport {
 
   /// `type` is `(Object x nCaptures) -> Object`.
   static CallSite def(MethodHandles.Lookup lookup, MethodType type, int astIndex) {
-    var ctx = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context();
-    var factory = MethodHandles.insertArguments(MAKE_FUNCTION, 0, ctx, astIndex)  // (Object[]) -> PyFunction
+    var moduleClassLoader = (ModuleClassLoader) lookup.lookupClass().getClassLoader();
+    var ctx = moduleClassLoader.context();
+    var dictionary = moduleClassLoader.dictionary();
+    var def = dictionary.retrieve(astIndex);
+    var factory = MethodHandles.insertArguments(MAKE_FUNCTION, 0, ctx, def)  // (Object[]) -> PyFunction
         .asCollector(Object[].class, type.parameterCount())
         .asType(type);
     return new ConstantCallSite(factory);
@@ -69,17 +72,11 @@ final class FunctionSupport {
     return MethodType.methodType(Object.class, types);
   }
 
-  static PyFunction makeFunction(ModuleContext ctx, int astIndex, Object[] captures) {
-    var info = ctx.functionInfo(astIndex);
-    var def = info.def();
+  static PyFunction makeFunction(ModuleContext ctx, Stmt.FunctionDef def, Object[] captures) {
     var parameters = def.parameters().stream().map(Stmt.FunctionDef.Param::name).toList();
     var varargs = def.rest().isPresent();
-    var body = ctx.bodies().get(astIndex);
-    if (body != null) {  // another closure of the same def already compiled it
-      return new PyFunction(info.qualifiedName(), parameters, varargs, bind(body, captures), true);
-    }
-    var lazy = lazyEntry(ctx, astIndex, captures, parameters.size(), varargs);
-    return new PyFunction(info.qualifiedName(), parameters, varargs, lazy, false);
+    var lazy = lazyEntry(ctx, def, captures, parameters.size(), varargs);
+    return new PyFunction(def.name(), parameters, varargs, lazy, false);
   }
 
   private static MethodHandle bind(MethodHandle body, Object[] captures) {
@@ -87,17 +84,17 @@ final class FunctionSupport {
   }
 
   /// A handle of the same type as the compiled entry that compiles the body on its first call.
-  private static MethodHandle lazyEntry(ModuleContext ctx, int astIndex, Object[] captures,
+  private static MethodHandle lazyEntry(ModuleContext ctx, Stmt.FunctionDef def, Object[] captures,
                                         int arity, boolean varargs) {
-    var impl = MethodHandles.insertArguments(COMPILE_AND_INVOKE, 0, ctx, astIndex, captures);
+    var impl = MethodHandles.insertArguments(COMPILE_AND_INVOKE, 0, ctx, def, captures);
     // (PyFunction, Object[]) -> Object
     var parameterCount = arity + (varargs ? 1 : 0);
     return impl.asCollector(Object[].class, parameterCount).asType(entryMethodType(arity, varargs));
   }
 
-  static Object compileAndInvoke(ModuleContext ctx, int astIndex, Object[] captures,
+  static Object compileAndInvoke(ModuleContext ctx, Stmt.FunctionDef def, Object[] captures,
                                  PyFunction self, Object[] args) throws Throwable {
-    var body = ctx.bodies().computeIfAbsent(astIndex, id -> compileBody(ctx, id));
+    var body = compileBody(ctx, def);
     var entry = bind(body, captures);
     self.install(entry);
     var all = new Object[args.length + 1];
@@ -106,14 +103,15 @@ final class FunctionSupport {
     return entry.invokeWithArguments(all);
   }
 
-  private static MethodHandle compileBody(ModuleContext ctx, int astIndex) {
-    var def = ctx.functionInfo(astIndex).def();
+  private static MethodHandle compileBody(ModuleContext ctx, Stmt.FunctionDef def) {
     var scope = ctx.scopeFor(def);
     ScopeAnalyzer.checkDefiniteAssignment(scope);
 
-    var bytes = BytecodeGenerator.generateFunction(ctx, astIndex, def, scope);
-    var className = BytecodeGenerator.functionClassName(astIndex, def).replace('/', '.');
-    var clazz = ctx.loader().define(className, bytes);
+    var dictionary = new Dictionary();
+    var bytes = BytecodeGenerator.generateFunction(ctx, dictionary, def, scope);
+    var className = BytecodeGenerator.functionClassName(def).replace('/', '.');
+    var loader = new ModuleClassLoader(ctx, dictionary);
+    var clazz = loader.define(className, bytes);
     var captureCount = BytecodeGenerator.captureNames(def, scope.analysis()).size();
     var type = BytecodeGenerator.bodyType(captureCount, def.parameters().size(), def.rest().isPresent());
     try {

@@ -17,7 +17,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 /// Everything a module owns: global cells, builtins, the registered functions and their compiled bodies.
 /// Generated code reaches it through `((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context()`.
 public final class ModuleContext {
-  public record FunctionInfo(Stmt.FunctionDef def, String qualifiedName) {}
 
   /// A module-level name. `null` means unbound.
   public static final class GlobalCell {
@@ -48,21 +47,14 @@ public final class ModuleContext {
     }
   }
 
-  private final ModuleClassLoader loader;
-  private final ArrayList<FunctionInfo> functions = new ArrayList<>();
-  private final IdentityHashMap<Stmt.FunctionDef, Integer> ids = new IdentityHashMap<>();
   private final IdentityHashMap<Stmt.FunctionDef, FunctionScope> scopes = new IdentityHashMap<>();
+
   private final HashMap<String, GlobalCell> globals = new HashMap<>();
   private final HashMap<String, Object> builtins = new HashMap<>();
-  private final HashMap<Integer, MethodHandle> bodies = new HashMap<>();
-  private final AtomicInteger scriptCount = new AtomicInteger();
 
   public ModuleContext() {
-    this.loader = new ModuleClassLoader(this);
-  }
 
-  public ModuleClassLoader loader() { return loader; }
-  public int nextScriptId() { return scriptCount.getAndIncrement(); }
+  }
 
   // ---- globals
 
@@ -70,55 +62,27 @@ public final class ModuleContext {
     return globals.computeIfAbsent(name, n -> new GlobalCell(builtins, n));
   }
 
-  public Object getGlobal(String name) { return cell(name).get(); }
-  public void setGlobal(String name, Object value) { cell(name).set(value); }
-  public void defineBuiltin(String name, Object value) { builtins.put(name, Objects.requireNonNull(value)); }
+  public Object getGlobal(String name) {
+    Objects.requireNonNull(name);
+    return cell(name).get();
+  }
+  public void setGlobal(String name, Object value) {
+    Objects.requireNonNull(name);
+    Objects.requireNonNull(value);
+    cell(name).set(value);
+  }
+  public void defineBuiltin(String name, Object value) {
+    Objects.requireNonNull(name);
+    Objects.requireNonNull(value);
+    builtins.put(name, value);
+  }
 
   // ---- functions
 
-  /// Gives an id and a qualified name (CPython's `__qualname__`) to every def of the script, nested ones included.
-  public synchronized void registerFunctions(Script script) {
-    register(script.body().stmts(), null);
-  }
-
-  private void register(List<Stmt> stmts, String enclosing) {
-    for (var stmt : stmts) {
-      switch (stmt) {
-        case Stmt.FunctionDef def -> {
-          var qualified = enclosing == null ? def.name() : enclosing + ".<locals>." + def.name();
-          ids.put(def, functions.size());
-          functions.add(new FunctionInfo(def, qualified));
-          register(def.body().stmts(), qualified);
-        }
-        case Stmt.If s -> {
-          register(s.body().stmts(), enclosing);
-          register(s.orElse().stmts(), enclosing);
-        }
-        case Stmt.While s -> {
-          register(s.body().stmts(), enclosing);
-          register(s.orElse().stmts(), enclosing);
-        }
-        case Stmt.For s -> {
-          register(s.body().stmts(), enclosing);
-          register(s.orElse().stmts(), enclosing);
-        }
-        default -> { }
-      }
-    }
-  }
-
-  public synchronized FunctionInfo functionInfo(int id) { return functions.get(id); }
-
-  public synchronized int idOf(Stmt.FunctionDef def) {
-    var id = ids.get(def);
-    if (id == null) {
-      throw new IllegalStateException("function '" + def.name() + "' is not registered");
-    }
-    return id;
-  }
-
   /// Scopes of nested functions are registered while their enclosing function is compiled.
   public void registerScope(Stmt.FunctionDef def, FunctionScope scope) {
+    Objects.requireNonNull(def);
+    Objects.requireNonNull(scope);
     scopes.put(def, scope);
   }
 
@@ -139,6 +103,4 @@ public final class ModuleContext {
     }
     return scope;
   }
-
-  HashMap<Integer, MethodHandle> bodies() { return bodies; }
 }
