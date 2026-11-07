@@ -8,6 +8,14 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Python build-standalone coordinates -->
+        <python.version>3.14.10</python.version>
+        <python.release>20261026</python.release>
+        <python.base.url>https://github.com/astral-sh/python-build-standalone/releases/download</python.base.url>
+        <!-- Default = Linux x86_64, overridden by OS profiles -->
+        <!-- python.archive>cpython-${python.version}%2B${python.release}-x86_64-unknown-linux-gnu-install_only.tar.gz</python.archive -->
+        <python.archive>cpython-${python.version}%2B${python.release}-aarch64-apple-darwin-install_only.tar.gz</python.archive>
     </properties>
 
     <dependencies>
@@ -108,4 +116,121 @@
         </plugins>
     </build>
 
+    <profiles>
+        <profile>
+            <id>update-corpus</id>
+            <build>
+                <plugins>
+
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.3.0</version>
+                        <executions>
+                            <execution>
+                                <id>clone-micropython</id>
+                                <phase>initialize</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>bash</executable>
+                                    <arguments>
+                                        <argument>-eu</argument>
+                                        <argument>-c</argument>
+                                        <argument>MP="${project.build.directory}/micropython";
+                                            if [ ! -d "$MP/.git" ]; then
+                                            git clone --depth 1 --filter=blob:none --sparse \
+                                            --branch v1.24.1 \
+                                            https://github.com/micropython/micropython.git "$MP";
+                                            fi;
+                                            git -C "$MP" sparse-checkout set tests/basics</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>com.googlecode.maven-download-plugin</groupId>
+                        <artifactId>download-maven-plugin</artifactId>
+                        <version>1.13.0</version>
+                        <executions>
+                            <execution>
+                                <id>download-python</id>
+                                <phase>initialize</phase>
+                                <goals><goal>wget</goal></goals>
+                                <configuration>
+                                    <url>${python.base.url}/${python.release}/${python.archive}</url>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                    <outputFileName>python-${python.version}.tar.gz</outputFileName>
+                                    <overwrite>false</overwrite>
+                                    <unpack>false</unpack>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.3.0</version>
+                        <executions>
+                            <execution>
+                                <id>extract-python</id>
+                                <phase>initialize</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>tar</executable>
+                                    <arguments>
+                                        <argument>-xzf</argument>
+                                        <argument>${project.build.directory}/python-${python.version}.tar.gz</argument>
+                                        <argument>-C</argument>
+                                        <argument>${project.build.directory}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>generate-golden-files</id>
+                                <phase>generate-test-resources</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>${project.build.directory}/python/bin/python3</executable>
+                                    <arguments>
+                                        <argument>${project.basedir}/src/test/scripts/generate_golden.py</argument>
+                                        <argument>${project.build.directory}/micropython/tests/basics</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>copy-corpus</id>
+                                <phase>process-test-resources</phase>
+                                <goals><goal>copy-resources</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.basedir}/src/test/resources/basics</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.build.directory}/micropython/tests/basics</directory>
+                                            <includes>
+                                                <include>*.py</include>
+                                                <include>*.py.exp</include>
+                                                <include>*.golden</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
