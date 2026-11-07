@@ -60,7 +60,8 @@ public final class ScopeAnalyzerTest {
 
     @Test
     public void emptyScript() {
-      assertAccepts("");
+      var result = analyze("");
+      assertTrue(result.isEmpty());
     }
 
     @Test
@@ -520,6 +521,20 @@ public final class ScopeAnalyzerTest {
               return fs
           """);
     }
+
+    @Test
+    public void firstCapturingChildIsNamedInError() {
+      assertRejected("""
+          def outer():
+              x = 1
+              x = 2
+              def g():
+                  return x
+              def h():
+                  return x
+              return g
+          """, "captured by 'g'");
+    }
   }
 
   // =====================================================================
@@ -591,6 +606,15 @@ public final class ScopeAnalyzerTest {
                         a = b = c = 1
                         return a + b + c
                     """);
+    }
+
+    @Test
+    public void sameNameChainedAssignmentAccepted() {
+      assertAccepts("""
+          def f():
+              x = x = 1
+              return x
+          """);
     }
 
     // ---------------------------------------------------------------
@@ -768,7 +792,8 @@ public final class ScopeAnalyzerTest {
                     """);
     }
 
-    @Test public void forTargetCheckedAgainstBase() {
+    @Test
+    public void forTargetCheckedAgainstBase() {
       // 'a' is local (assigned in the `if c:` branch) but not definitely assigned
       // at the `for`, so reading it for the subscript target is rejected.
       assertRejected("""
@@ -789,6 +814,26 @@ public final class ScopeAnalyzerTest {
                 for a[0] in xs:
                     pass
             """);
+    }
+
+    @Test
+    public void whileTrueIsTreatedAsReachableTail() {
+      assertAccepts("""
+          def f():
+              while True:
+                  pass
+              x = 1
+              return x
+          """);
+    }
+
+    @Test
+    public void forTargetBoundBeforeBody() {
+      assertAccepts("""
+          def f(xs):
+              for i in xs:
+                  return i
+          """);
     }
 
     // ---------------------------------------------------------------
@@ -827,6 +872,17 @@ public final class ScopeAnalyzerTest {
                     """);
     }
 
+    @Test
+    public void unreachableDefAfterReturnBodyNotChecked() {
+      assertAccepts("""
+          def outer():
+              return 1
+              def inner():
+                  return y
+              y = 1
+          """);
+    }
+
     // ---------------------------------------------------------------
     // expressions: conditional, short-circuit
     // ---------------------------------------------------------------
@@ -861,7 +917,8 @@ public final class ScopeAnalyzerTest {
             """, "may be used before assignment");
     }
 
-    @Test public void shortCircuitOrChecksRightOperand() {
+    @Test
+    public void shortCircuitOrChecksRightOperand() {
       assertRejected("""
             def f(c, d):
                 if d:
@@ -930,6 +987,32 @@ public final class ScopeAnalyzerTest {
                     """, "assigned 2 times (at most 1 allowed)");
     }
 
+    @Test
+    public void transitiveCaptureBeforeAssignmentRejected() {
+      assertRejected("""
+          def outer():
+              def middle():
+                  def inner():
+                      return x
+                  return inner
+              x = 1
+              return middle
+          """, "may be unassigned at the point of definition");
+    }
+
+    @Test
+    public void transitiveCaptureAfterAssignmentAccepted() {
+      assertAccepts("""
+          def outer():
+              x = 1
+              def middle():
+                  def inner():
+                      return x
+                  return inner
+              return middle
+          """);
+    }
+
     // ---------------------------------------------------------------
     // self / mutual recursion
     // ---------------------------------------------------------------
@@ -989,5 +1072,85 @@ public final class ScopeAnalyzerTest {
                             return x
                     """);
     }
+
+    // ---------------------------------------------------------------
+    // del
+    // ---------------------------------------------------------------
+
+    @Test
+    public void delUndefinedBaseRejected() {
+      assertRejected("""
+          def f(c):
+              if c:
+                  xs = [0]
+              del xs[0]
+          """, "may be used before assignment");
+    }
+
+    @Test
+    public void delSubscriptAccepted() {
+      assertAccepts("""
+          def f():
+              xs = [0]
+              del xs[0]
+          """);
+    }
+
+    @Test
+    public void delSubscriptDoesNotUnbind() {
+      assertAccepts("""
+          def f():
+              xs = [0]
+              del xs[0]
+              xs.append(1)
+          """);
+    }
+
+    @Test
+    public void delUndefinedIndexRejected() {
+      assertRejected("""
+          def f(c):
+              xs = [0]
+              if c:
+                  i = 0
+              del xs[i]
+          """, "may be used before assignment");
+    }
+
+    // ---------------------------------------------------------------
+    // augmented assignment with a subscript target
+    // ---------------------------------------------------------------
+
+    @Test
+    public void augAssignSubscriptUndefinedBaseRejected() {
+      assertRejected("""
+          def f(c):
+              if c:
+                  xs = [0]
+              xs[0] += 1
+          """, "may be used before assignment");
+    }
+
+    @Test
+    public void augAssignSubscriptAccepted() {
+      assertAccepts("""
+          def f():
+              xs = [0]
+              xs[0] += 1
+          """);
+    }
+
+    @Test
+    public void augAssignSubscriptUndefinedIndexRejected() {
+      assertRejected("""
+          def f(c):
+              xs = [0]
+              if c:
+                  i = 0
+              xs[i] += 1
+          """, "may be used before assignment");
+    }
+
+    
   }
 }
