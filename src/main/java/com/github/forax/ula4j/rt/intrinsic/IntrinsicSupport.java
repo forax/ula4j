@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyFunction;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyOverflowError;
@@ -10,7 +11,7 @@ import java.math.BigInteger;
 
 /// Non-intrinsic helpers shared by the intrinsic classes of this package.
 /// Nothing here is specialized: these methods are plain static calls.
-final class IntrinsicSupport {
+public final class IntrinsicSupport {
   private IntrinsicSupport() {
     throw new AssertionError("no instances");
   }
@@ -69,7 +70,7 @@ final class IntrinsicSupport {
 
   /// The name `type(value).__name__` would report.
   /// Placeholder until PyType exists; extend it with PyList, PyDict, PyRange, ...
-  static String typeName(Object value) {
+  public static String typeName(Object value) {
     return switch (value) {
       case Long _, BigInteger _ -> "int";
       case Boolean _ -> "bool";
@@ -77,6 +78,7 @@ final class IntrinsicSupport {
       case String _ -> "str";
       case PyNone _ -> "NoneType";
       case PyTuple _ -> "tuple";
+      case PyFunction _ -> "function";           // new
       default -> throw new UnimplementedFeatureError("type name of " + value.getClass().getName());
     };
   }

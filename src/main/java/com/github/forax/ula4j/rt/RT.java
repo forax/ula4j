@@ -9,6 +9,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
 import java.lang.runtime.SwitchBootstraps;
+import java.math.BigInteger;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -130,5 +131,29 @@ public final class RT {
       caseClasses[i] = (Class<?>) bsmArgs[i];
     }
     return new InliningCache(lookup, caseClasses);
+  }
+
+  public static Object bsmConst(MethodHandles.Lookup lookup, String name, Class<?> type, Object value) {
+    return value;
+  }
+
+  public static Object bsmBigInt(MethodHandles.Lookup lookup, String name, Class<?> type, String digits) {
+    return new BigInteger(digits);
+  }
+
+  public static CallSite bsmDef(MethodHandles.Lookup lookup, String name, MethodType type, int astIndex) {
+    return FunctionSupport.def(lookup, type, astIndex);
+  }
+
+  public static CallSite bsmCall(MethodHandles.Lookup lookup, String name, MethodType type) {
+    return new FunctionCallSite(type);
+  }
+
+  public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
+    return FunctionSupport.getGlobal(lookup, type, globalName);
+  }
+
+  public static CallSite bsmSetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
+    return FunctionSupport.setGlobal(lookup, type, globalName);
   }
 }

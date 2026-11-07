@@ -1,0 +1,687 @@
+package com.github.forax.ula4j.compiler;
+
+import com.github.forax.ula4j.ast.Block;
+import com.github.forax.ula4j.ast.Expr;
+import com.github.forax.ula4j.ast.Script;
+import com.github.forax.ula4j.ast.Stmt;
+import com.github.forax.ula4j.ast.Target;
+import com.github.forax.ula4j.ast.UnsupportedSyntaxException;
+import com.github.forax.ula4j.compiler.ScopeAnalyzer.FunctionAnalysis;
+import com.github.forax.ula4j.compiler.ScopeAnalyzer.FunctionScope;
+import com.github.forax.ula4j.rt.ModuleContext;
+import com.github.forax.ula4j.rt.PyFunction;
+import com.github.forax.ula4j.rt.PyTuple;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.ConstantDynamic;
+import org.objectweb.asm.Handle;
+import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
+
+import java.lang.invoke.MethodType;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.objectweb.asm.Opcodes.*;
+
+/// Turns the AST into class files: `Script_<n>` (static `__main__()`) and `Fn_<name>_<id>`
+/// (static `body(captures..., PyFunction self, params... [, PyTuple rest])`).
+///
+/// Everything dynamic is an `invokedynamic`. Intrinsics are linked with `RT.bsmSpecialize` using
+/// the descriptor of the intrinsic itself (a comparison returns a primitive `boolean`, which is
+/// directly consumed by the branch instructions).
+public final class BytecodeGenerator {
+  private BytecodeGenerator() { throw new AssertionError(); }
+
+  private static final int MAX_PARAMETERS = 254;           // JVM and MethodHandle limit
+  private static final int MAX_CALL_ARGUMENTS = MAX_PARAMETERS - 1;
+  private static final int LDC_CHUNK = 20_000;             // 3 bytes per char at most, 65535 bytes per constant
+
+  private static final String GEN_PACKAGE = "com/github/forax/ula4j/gen/";
+  private static final String RT = "com/github/forax/ula4j/rt/RT";
+  private static final String PY_NONE = "com/github/forax/ula4j/rt/PyNone";
+  private static final String INTRINSICS = "com/github/forax/ula4j/rt/intrinsic/";
+  private static final String ARITHMETIC = INTRINSICS + "ArithmeticIntrinsics";
+  private static final String COMPARISON = INTRINSICS + "ComparisonIntrinsics";
+  private static final String TRUTHINESS = INTRINSICS + "TruthinessIntrinsics";
+  private static final String CONTAINMENT = INTRINSICS + "ContainmentIntrinsics";
+  private static final String ITERATION = INTRINSICS + "IteratorIntrinsics";
+
+  private static final String O = "Ljava/lang/Object;";
+  private static final String UNARY = "(" + O + ")" + O;
+  private static final String BINARY = "(" + O + O + ")" + O;
+  private static final String UNARY_BOOL = "(" + O + ")Z";
+  private static final String BINARY_BOOL = "(" + O + O + ")Z";
+
+  private static final String BSM_PREFIX =
+      "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;";
+  private static final String CALL_SITE = ")Ljava/lang/invoke/CallSite;";
+  private static final String CONDY_PREFIX =
+      "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;";
+
+  private static Handle bsm(String name, String descriptor) {
+    return new Handle(H_INVOKESTATIC, RT, name, descriptor, false);
+  }
+
+  private static final Handle BSM_SPECIALIZE = bsm("bsmSpecialize", BSM_PREFIX + "Ljava/lang/Class;" + CALL_SITE);
+  private static final Handle BSM_DEF = bsm("bsmDef", BSM_PREFIX + "I" + CALL_SITE);
+  private static final Handle BSM_CALL = bsm("bsmCall", BSM_PREFIX + CALL_SITE);
+  private static final Handle BSM_GET_GLOBAL = bsm("bsmGetGlobal", BSM_PREFIX + "Ljava/lang/String;" + CALL_SITE);
+  private static final Handle BSM_SET_GLOBAL = bsm("bsmSetGlobal", BSM_PREFIX + "Ljava/lang/String;" + CALL_SITE);
+  private static final Handle BSM_CONST = bsm("bsmConst", CONDY_PREFIX + O + ")" + O);
+  private static final Handle BSM_BIG_INT = bsm("bsmBigInt", CONDY_PREFIX + "Ljava/lang/String;)" + O);
+
+  // ---------------------------------------------------------------------------------------------
+  // naming and types, shared with the runtime
+
+  public static String functionClassName(int astIndex, Stmt.FunctionDef def) {
+    var sanitized = new StringBuilder();
+    for (var c : def.name().toCharArray()) {
+      sanitized.append(Character.isLetterOrDigit(c) && c < 128 || c == '_' ? c : '_');
+    }
+    return GEN_PACKAGE + "Fn_" + sanitized + "_" + astIndex;
+  }
+
+  /// The variables a function receives through `insertArguments`, in `freeVariables` order.
+  /// A nested function reaches its own name through `self`, so that name is not captured.
+  public static List<String> captureNames(Stmt.FunctionDef def, FunctionAnalysis analysis) {
+    return analysis.freeVariables().stream().filter(name -> !name.equals(def.name())).toList();
+  }
+
+  /// `(Object x captures, PyFunction self, Object x arity [, PyTuple rest]) -> Object`
+  public static MethodType bodyType(int captures, int arity, boolean varargs) {
+    var types = new ArrayList<Class<?>>();
+    for (var i = 0; i < captures; i++) {
+      types.add(Object.class);
+    }
+    types.add(PyFunction.class);
+    for (var i = 0; i < arity; i++) {
+      types.add(Object.class);
+    }
+    if (varargs) {
+      types.add(PyTuple.class);
+    }
+    return MethodType.methodType(Object.class, types);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // entry points
+
+  public static byte[] generateScript(ModuleContext ctx, Script script, String internalName) {
+    ctx.registerFunctions(script);
+    var cw = newClassWriter(internalName);
+    var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "__main__", "()V", null, null);
+    mv.visitCode();
+    var emitter = new Emitter(mv, ctx, null, null);
+    emitter.block(script.body());
+    mv.visitInsn(RETURN);
+    mv.visitMaxs(0, 0);
+    mv.visitEnd();
+    cw.visitEnd();
+    return cw.toByteArray();
+  }
+
+  public static byte[] generateFunction(ModuleContext ctx, int astIndex, Stmt.FunctionDef def, FunctionScope scope) {
+    var analysis = scope.analysis();
+    var captures = captureNames(def, analysis);
+    var arity = def.parameters().size();
+    var varargs = def.rest().isPresent();
+    var parameterCount = captures.size() + 1 + arity + (varargs ? 1 : 0);
+    if (parameterCount > MAX_PARAMETERS) {
+      throw new SemanticErrorException("function '" + def.name() + "' has too many parameters and captured variables ("
+          + parameterCount + ", at most " + MAX_PARAMETERS + " are supported)", def.line(), def.column());
+    }
+
+    var cw = newClassWriter(functionClassName(astIndex, def));
+    var descriptor = bodyType(captures.size(), arity, varargs).toMethodDescriptorString();
+    var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "body", descriptor, null, null);
+    mv.visitCode();
+
+    var emitter = new Emitter(mv, ctx, def, scope);
+    for (var capture : captures) {
+      emitter.declare(capture);
+    }
+    emitter.selfSlot = emitter.allocate();
+    for (var parameter : def.parameters()) {
+      emitter.declare(parameter.name());
+    }
+    def.rest().ifPresent(rest -> emitter.declare(rest.name()));
+    for (var local : analysis.locals()) {
+      if (!emitter.slots.containsKey(local)) {
+        emitter.declare(local);
+      }
+    }
+    emitter.registerNestedScopes(def.body().stmts());
+
+    emitter.block(def.body());
+    mv.visitFieldInsn(GETSTATIC, PY_NONE, "INSTANCE", "L" + PY_NONE + ";");
+    mv.visitInsn(ARETURN);
+    mv.visitMaxs(0, 0);
+    mv.visitEnd();
+    cw.visitEnd();
+    return cw.toByteArray();
+  }
+
+  private static ClassWriter newClassWriter(String internalName) {
+    var cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
+      @Override
+      protected String getCommonSuperClass(String type1, String type2) {
+        return "java/lang/Object";  // never load a class, every merged value is used as an Object
+      }
+    };
+    cw.visit(V21, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalName, null, "java/lang/Object", null);
+    cw.visitSource("<ula4j>", null);
+    return cw;
+  }
+
+  private static UnsupportedSyntaxException unsupported(String construct, int line, int column) {
+    return new UnsupportedSyntaxException(construct, line, column);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // operator tables
+
+  private static String binaryName(Expr.BinaryOperator op) {
+    return switch (op) {
+      case ADD -> "$add$";
+      case SUB -> "$sub$";
+      case MUL -> "$mul$";
+      case DIV -> "$div$";
+      case FLOOR_DIV -> "$floorDiv$";
+      case MOD -> "$mod$";
+      case POW -> "$pow$";
+      case LSHIFT -> "$lshift$";
+      case RSHIFT -> "$rshift$";
+      case BIT_AND -> "$bitAnd$";
+      case BIT_OR -> "$bitOr$";
+      case BIT_XOR -> "$bitXor$";
+    };
+  }
+
+  private static String augmentedName(Expr.BinaryOperator op) {
+    return switch (op) {
+      case ADD -> "$iadd$";
+      case SUB -> "$isub$";
+      case MUL -> "$imul$";
+      case DIV -> "$idiv$";
+      case FLOOR_DIV -> "$ifloorDiv$";
+      case MOD -> "$imod$";
+      case POW -> "$ipow$";
+      case LSHIFT -> "$ilshift$";
+      case RSHIFT -> "$irshift$";
+      case BIT_AND -> "$iand$";
+      case BIT_OR -> "$ior$";
+      case BIT_XOR -> "$ixor$";
+    };
+  }
+
+  private static String unaryName(Expr.UnaryOperator op) {
+    return switch (op) {
+      case POS -> "$pos$";
+      case NEG -> "$neg$";
+      case INVERT -> "$invert$";
+    };
+  }
+
+  private static int utf8Length(String s) {
+    var length = 0;
+    for (var i = 0; i < s.length(); i++) {
+      var c = s.charAt(i);
+      length += (c >= 0x0001 && c <= 0x007F) ? 1 : (c <= 0x07FF ? 2 : 3);
+    }
+    return length;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // the emitter: one per generated method
+
+  private static final class Emitter {
+    private final MethodVisitor mv;
+    private final ModuleContext ctx;
+    private final Stmt.FunctionDef function;  // null in __main__
+    private final FunctionScope scope;        // null in __main__
+    private final Set<String> frees;
+    private final Map<String, Integer> slots = new HashMap<>();
+    private int nextSlot;
+    private int selfSlot = -1;
+    private Label breakTarget;
+    private Label continueTarget;
+
+    Emitter(MethodVisitor mv, ModuleContext ctx, Stmt.FunctionDef function, FunctionScope scope) {
+      this.mv = mv;
+      this.ctx = ctx;
+      this.function = function;
+      this.scope = scope;
+      this.frees = scope == null ? Set.of() : scope.analysis().freeVariables();
+    }
+
+    int allocate() { return nextSlot++; }
+
+    void declare(String name) { slots.put(name, allocate()); }
+
+    /// The scope of a nested function is only known through the scope of its parent.
+    void registerNestedScopes(List<Stmt> stmts) {
+      for (var stmt : stmts) {
+        switch (stmt) {
+          case Stmt.FunctionDef def -> ctx.registerScope(def, scope.inner(def));
+          case Stmt.If s -> {
+            registerNestedScopes(s.body().stmts());
+            registerNestedScopes(s.orElse().stmts());
+          }
+          case Stmt.While s -> {
+            registerNestedScopes(s.body().stmts());
+            registerNestedScopes(s.orElse().stmts());
+          }
+          case Stmt.For s -> {
+            registerNestedScopes(s.body().stmts());
+            registerNestedScopes(s.orElse().stmts());
+          }
+          default -> { }
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------ small helpers
+
+    private void intrinsic(String owner, String name, String descriptor) {
+      mv.visitInvokeDynamicInsn(name, descriptor, BSM_SPECIALIZE, Type.getObjectType(owner));
+    }
+
+    private void truthy() { intrinsic(TRUTHINESS, "$truthy$", UNARY_BOOL); }
+
+    private void box() {
+      mv.visitMethodInsn(INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
+    }
+
+    private void pushBoolean(boolean value) {
+      mv.visitFieldInsn(GETSTATIC, "java/lang/Boolean", value ? "TRUE" : "FALSE", "Ljava/lang/Boolean;");
+    }
+
+    private void line(int line) {
+      var label = new Label();
+      mv.visitLabel(label);
+      mv.visitLineNumber(line, label);
+    }
+
+    private void loadName(String name) {
+      var slot = slots.get(name);
+      if (slot != null) {
+        mv.visitVarInsn(ALOAD, slot);
+      } else if (function != null && name.equals(function.name()) && frees.contains(name)) {
+        mv.visitVarInsn(ALOAD, selfSlot);  // a nested function refers to itself through self
+      } else {
+        mv.visitInvokeDynamicInsn("getGlobal", "()" + O, BSM_GET_GLOBAL, name);
+      }
+    }
+
+    /// Stores the value on top of the stack.
+    private void storeName(String name) {
+      var slot = slots.get(name);
+      if (slot != null) {
+        mv.visitVarInsn(ASTORE, slot);
+      } else if (function == null) {
+        mv.visitInvokeDynamicInsn("setGlobal", "(" + O + ")V", BSM_SET_GLOBAL, name);
+      } else {
+        throw new IllegalStateException("'" + name + "' is not a local of '" + function.name() + "'");
+      }
+    }
+
+    private void storeTarget(Target target) {
+      switch (target) {
+        case Target.NameTarget n -> storeName(n.id());
+        case Target.SubscriptTarget t -> throw unsupported("subscript assignment", t.line(), t.column());
+        case Target.TupleTarget t -> throw unsupported("tuple unpacking", t.line(), t.column());
+      }
+    }
+
+    // ------------------------------------------------------------------ statements
+
+    void block(Block block) {
+      for (var stmt : block.stmts()) {
+        stmt(stmt);
+      }
+    }
+
+    private void stmt(Stmt stmt) {
+      line(stmt.line());
+      switch (stmt) {
+        case Stmt.ExprStmt s -> {
+          expr(s.expr());
+          mv.visitInsn(POP);
+        }
+        case Stmt.Assign s -> assign(s);
+        case Stmt.AugAssign s -> augAssign(s);
+        case Stmt.Del s -> throw unsupported("del", s.line(), s.column());
+        case Stmt.Return s -> {
+          expr(s.value());
+          mv.visitInsn(ARETURN);
+        }
+        case Stmt.Break _ -> mv.visitJumpInsn(GOTO, breakTarget);
+        case Stmt.Continue _ -> mv.visitJumpInsn(GOTO, continueTarget);
+        case Stmt.If s -> ifStmt(s);
+        case Stmt.While s -> whileStmt(s);
+        case Stmt.For s -> forStmt(s);
+        case Stmt.FunctionDef s -> functionDef(s);
+      }
+    }
+
+    /// `a = b = value`: the value is evaluated once, then stored left to right.
+    private void assign(Stmt.Assign s) {
+      expr(s.value());
+      var targets = s.targets();
+      for (var i = 0; i < targets.size(); i++) {
+        if (i < targets.size() - 1) {
+          mv.visitInsn(DUP);
+        }
+        storeTarget(targets.get(i));
+      }
+    }
+
+    private void augAssign(Stmt.AugAssign s) {
+      switch (s.target()) {
+        case Target.NameTarget n -> {
+          loadName(n.id());
+          expr(s.value());
+          intrinsic(ARITHMETIC, augmentedName(s.op()), BINARY);
+          storeName(n.id());
+        }
+        case Target.SubscriptTarget t -> throw unsupported("subscript augmented assignment", t.line(), t.column());
+        case Target.TupleTarget t -> throw new AssertionError("augassign tuple target");
+      }
+    }
+
+    private void ifStmt(Stmt.If s) {
+      var orElse = new Label();
+      branch(s.test(), orElse, false);
+      block(s.body());
+      if (s.orElse().stmts().isEmpty()) {
+        mv.visitLabel(orElse);
+        return;
+      }
+      var end = new Label();
+      mv.visitJumpInsn(GOTO, end);
+      mv.visitLabel(orElse);
+      block(s.orElse());
+      mv.visitLabel(end);
+    }
+
+    /// `break` skips the else clause and jumps to `end`; the else clause belongs to the enclosing
+    /// context, so the enclosing break/continue targets are restored before it is emitted.
+    private void whileStmt(Stmt.While s) {
+      var top = new Label();
+      var orElse = new Label();
+      var end = new Label();
+      var savedBreak = breakTarget;
+      var savedContinue = continueTarget;
+
+      mv.visitLabel(top);
+      branch(s.test(), orElse, false);
+      breakTarget = end;
+      continueTarget = top;
+      block(s.body());
+      breakTarget = savedBreak;
+      continueTarget = savedContinue;
+      mv.visitJumpInsn(GOTO, top);
+
+      mv.visitLabel(orElse);
+      block(s.orElse());
+      mv.visitLabel(end);
+    }
+
+    private void forStmt(Stmt.For s) {
+      if (!(s.target() instanceof Target.NameTarget)) {
+        storeTarget(s.target());  // raises the diagnostic
+      }
+      var iterator = allocate();
+      expr(s.iter());
+      intrinsic(ITERATION, "$iterator$", UNARY);
+      mv.visitVarInsn(ASTORE, iterator);
+
+      var top = new Label();
+      var exhausted = new Label();
+      var end = new Label();
+      var savedBreak = breakTarget;
+      var savedContinue = continueTarget;
+
+      mv.visitLabel(top);
+      mv.visitVarInsn(ALOAD, iterator);
+      intrinsic(ITERATION, "$next$", UNARY);  // Java null when exhausted
+      mv.visitInsn(DUP);
+      mv.visitJumpInsn(IFNULL, exhausted);
+      storeTarget(s.target());
+      breakTarget = end;
+      continueTarget = top;
+      block(s.body());
+      breakTarget = savedBreak;
+      continueTarget = savedContinue;
+      mv.visitJumpInsn(GOTO, top);
+
+      mv.visitLabel(exhausted);
+      mv.visitInsn(POP);  // the null
+      block(s.orElse());
+      mv.visitLabel(end);
+    }
+
+    /// Captured values are pushed in `freeVariables` order, the order `insertArguments` binds them.
+    /// A function defined at module level captures nothing: its free names are globals.
+    private void functionDef(Stmt.FunctionDef def) {
+      var captures = function == null
+          ? List.<String>of()
+          : captureNames(def, ctx.scopeOf(def).analysis());
+      for (var capture : captures) {
+        loadName(capture);
+      }
+      mv.visitInvokeDynamicInsn("def", "(" + O.repeat(captures.size()) + ")" + O, BSM_DEF, ctx.idOf(def));
+      storeName(def.name());
+    }
+
+    // ------------------------------------------------------------------ conditions
+
+    /// Evaluates `e` as a condition and jumps to `target` when its truthiness equals `jumpIf`.
+    private void branch(Expr e, Label target, boolean jumpIf) {
+      switch (e) {
+        case Expr.Not n -> branch(n.operand(), target, !jumpIf);
+        case Expr.And a -> {
+          if (!jumpIf) {
+            branch(a.left(), target, false);
+            branch(a.right(), target, false);
+          } else {
+            var skip = new Label();
+            branch(a.left(), skip, false);
+            branch(a.right(), target, true);
+            mv.visitLabel(skip);
+          }
+        }
+        case Expr.Or o -> {
+          if (jumpIf) {
+            branch(o.left(), target, true);
+            branch(o.right(), target, true);
+          } else {
+            var skip = new Label();
+            branch(o.left(), skip, true);
+            branch(o.right(), target, false);
+            mv.visitLabel(skip);
+          }
+        }
+        case Expr.Compare c -> compareBranch(c, target, jumpIf);
+        default -> {
+          expr(e);
+          truthy();
+          mv.visitJumpInsn(jumpIf ? IFNE : IFEQ, target);
+        }
+      }
+    }
+
+    /// Leaves an int (the primitive boolean returned by the intrinsic) on the stack.
+    private void compareOp(Expr.CompareOperator op) {
+      switch (op) {
+        case EQ -> intrinsic(COMPARISON, "$eq$", BINARY_BOOL);
+        case NE -> intrinsic(COMPARISON, "$ne$", BINARY_BOOL);
+        case LT -> intrinsic(COMPARISON, "$lt$", BINARY_BOOL);
+        case LE -> intrinsic(COMPARISON, "$le$", BINARY_BOOL);
+        case GT -> intrinsic(COMPARISON, "$gt$", BINARY_BOOL);
+        case GE -> intrinsic(COMPARISON, "$ge$", BINARY_BOOL);
+        case IN -> intrinsic(CONTAINMENT, "$in$", BINARY_BOOL);
+        case NOT_IN -> {
+          intrinsic(CONTAINMENT, "$in$", BINARY_BOOL);
+          mv.visitInsn(ICONST_1);
+          mv.visitInsn(IXOR);
+        }
+      }
+    }
+
+    /// A chain evaluates every intermediate operand once; a failed comparison short-circuits.
+    private void compareBranch(Expr.Compare c, Label target, boolean jumpIf) {
+      var ops = c.ops();
+      if (ops.size() == 1) {
+        expr(c.first());
+        expr(c.rest().getFirst());
+        compareOp(ops.getFirst());
+        mv.visitJumpInsn(jumpIf ? IFNE : IFEQ, target);
+        return;
+      }
+      var current = allocate();  // the left operand of the next comparison
+      expr(c.first());
+      mv.visitVarInsn(ASTORE, current);
+      var skip = new Label();
+      var onFalse = jumpIf ? skip : target;
+      for (var i = 0; i < ops.size(); i++) {
+        var last = i == ops.size() - 1;
+        mv.visitVarInsn(ALOAD, current);
+        expr(c.rest().get(i));
+        if (!last) {
+          mv.visitInsn(DUP);
+          mv.visitVarInsn(ASTORE, current);
+        }
+        compareOp(ops.get(i));
+        if (!last) {
+          mv.visitJumpInsn(IFEQ, onFalse);
+        } else {
+          mv.visitJumpInsn(jumpIf ? IFNE : IFEQ, target);
+        }
+      }
+      if (jumpIf) {
+        mv.visitLabel(skip);
+      }
+    }
+
+    private void compareValue(Expr.Compare c) {
+      if (c.ops().size() == 1) {
+        expr(c.first());
+        expr(c.rest().getFirst());
+        compareOp(c.ops().getFirst());
+        box();
+        return;
+      }
+      var onFalse = new Label();
+      var end = new Label();
+      compareBranch(c, onFalse, false);
+      pushBoolean(true);
+      mv.visitJumpInsn(GOTO, end);
+      mv.visitLabel(onFalse);
+      pushBoolean(false);
+      mv.visitLabel(end);
+    }
+
+    /// `and` (IFEQ) and `or` (IFNE) return one of their operands.
+    private void shortCircuit(Expr left, Expr right, int jumpOpcode) {
+      var end = new Label();
+      expr(left);
+      mv.visitInsn(DUP);
+      truthy();
+      mv.visitJumpInsn(jumpOpcode, end);
+      mv.visitInsn(POP);
+      expr(right);
+      mv.visitLabel(end);
+    }
+
+    // ------------------------------------------------------------------ expressions
+
+    /// Every expression leaves exactly one Object on the stack.
+    private void expr(Expr e) {
+      switch (e) {
+        case Expr.Name n -> loadName(n.id());
+        case Expr.Literal l -> literal(l.value());
+        case Expr.NoneLiteral _ -> mv.visitFieldInsn(GETSTATIC, PY_NONE, "INSTANCE", "L" + PY_NONE + ";");
+        case Expr.BinOp b -> {
+          expr(b.left());
+          expr(b.right());
+          intrinsic(ARITHMETIC, binaryName(b.op()), BINARY);
+        }
+        case Expr.UnaryOp u -> {
+          expr(u.operand());
+          intrinsic(ARITHMETIC, unaryName(u.op()), UNARY);
+        }
+        case Expr.Not n -> {
+          expr(n.operand());
+          intrinsic(TRUTHINESS, "$not$", UNARY_BOOL);
+          box();
+        }
+        case Expr.And a -> shortCircuit(a.left(), a.right(), IFEQ);
+        case Expr.Or o -> shortCircuit(o.left(), o.right(), IFNE);
+        case Expr.Compare c -> compareValue(c);
+        case Expr.Conditional c -> {
+          var orElse = new Label();
+          var end = new Label();
+          branch(c.test(), orElse, false);
+          expr(c.then());
+          mv.visitJumpInsn(GOTO, end);
+          mv.visitLabel(orElse);
+          expr(c.orElse());
+          mv.visitLabel(end);
+        }
+        case Expr.Call c -> {
+          if (c.args().size() > MAX_CALL_ARGUMENTS) {
+            throw unsupported("call with more than " + MAX_CALL_ARGUMENTS + " arguments", c.line(), c.column());
+          }
+          expr(c.func());
+          for (var arg : c.args()) {
+            expr(arg);
+          }
+          mv.visitInvokeDynamicInsn("call", "(" + O.repeat(c.args().size() + 1) + ")" + O, BSM_CALL);
+        }
+        case Expr.MethodCall m -> throw unsupported("method call", m.line(), m.column());
+        case Expr.Subscript s -> throw unsupported("subscript", s.line(), s.column());
+        case Expr.Slice s -> throw unsupported("slice", s.line(), s.column());
+        case Expr.ListDisplay d -> throw unsupported("list display", d.line(), d.column());
+        case Expr.TupleDisplay d -> throw unsupported("tuple display", d.line(), d.column());
+        case Expr.DictDisplay d -> throw unsupported("dict display", d.line(), d.column());
+      }
+    }
+
+    private void literal(Object value) {
+      switch (value) {
+        case Long l -> condy("Ljava/lang/Long;", BSM_CONST, l);
+        case Double d -> condy("Ljava/lang/Double;", BSM_CONST, d);
+        case String s -> pushString(s);
+        case Boolean b -> pushBoolean(b);
+        case BigInteger b -> condy("Ljava/math/BigInteger;", BSM_BIG_INT, b.toString());
+        default -> throw new AssertionError("not a canonical literal: " + value);
+      }
+    }
+
+    private void condy(String descriptor, Handle bootstrap, Object argument) {
+      mv.visitLdcInsn(new ConstantDynamic("literal", descriptor, bootstrap, argument));
+    }
+
+    /// Supplementary characters are fine in a constant (modified UTF-8 stores the surrogate pair);
+    /// only a constant longer than 65535 bytes has to be split.
+    private void pushString(String s) {
+      if (utf8Length(s) <= 65535) {
+        mv.visitLdcInsn(s);
+        return;
+      }
+      for (var start = 0; start < s.length(); start += LDC_CHUNK) {
+        mv.visitLdcInsn(s.substring(start, Math.min(s.length(), start + LDC_CHUNK)));
+        if (start > 0) {
+          mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/String", "concat",
+              "(Ljava/lang/String;)Ljava/lang/String;", false);
+        }
+      }
+    }
+  }
+}
