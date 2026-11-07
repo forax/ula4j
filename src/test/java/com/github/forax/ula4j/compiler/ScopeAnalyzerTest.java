@@ -434,6 +434,92 @@ public final class ScopeAnalyzerTest {
               return middle
           """, "captured by 'middle'");
     }
+
+    @Test
+    public void capturedForTargetRejected() {
+      assertRejected("""
+          def outer(xs):
+              fs = []
+              for i in xs:
+                  def g():
+                      return i
+                  fs.append(g)
+              return fs
+          """, "assigned inside a loop");
+    }
+
+    @Test
+    public void capturedWhileBodyAssignmentRejected() {
+      assertRejected("""
+          def outer(c):
+              while c:
+                  x = 1
+                  def inner():
+                      return x
+          """, "assigned inside a loop");
+    }
+
+    @Test
+    public void selfRecursiveDefInsideLoopRejected() {
+      assertRejected("""
+          def outer(xs):
+              for i in xs:
+                  def f(n):
+                      return f(n)
+          """, "assigned inside a loop");
+    }
+
+    @Test
+    public void loopElseAssignmentAcceptedWhenNotNestedInLoop() {
+      assertAccepts("""
+          def outer(c):
+              while c:
+                  pass
+              else:
+                  x = 1
+              def inner():
+                  return x
+              return inner
+          """);
+    }
+
+    @Test
+    public void loopElseAssignmentRejectedWhenEnclosingLoop() {
+      assertRejected("""
+          def outer(c, d):
+              while d:
+                  while c:
+                      pass
+                  else:
+                      x = 1
+                  def inner():
+                      return x
+          """, "assigned inside a loop");
+    }
+
+    @Test
+    public void loopVariableNotCapturedAccepted() {
+      assertAccepts("""
+          def f(xs):
+              for i in xs:
+                  pass
+          """);
+    }
+
+    @Test
+    public void factoryFunctionIsTheWorkaround() {
+      assertAccepts("""
+          def outer(xs):
+              def make(v):
+                  def get():
+                      return v
+                  return get
+              fs = []
+              for i in xs:
+                  fs.append(make(i))
+              return fs
+          """);
+    }
   }
 
   // =====================================================================

@@ -35,6 +35,7 @@ public final class ScopeAnalyzer {
     final LinkedHashSet<String> params;
     final LinkedHashSet<String> frees;
     final LinkedHashMap<String, Integer> assignmentCounts ;
+    final LinkedHashSet<String> loopAssigned;
     final ArrayList<Scope> children;
 
     Stmt.FunctionDef function;
@@ -46,12 +47,16 @@ public final class ScopeAnalyzer {
       this.params = new LinkedHashSet<>();
       this.frees = new LinkedHashSet<>();
       this.assignmentCounts = new LinkedHashMap<>();
+      this.loopAssigned = new LinkedHashSet<>();
       this.children = new ArrayList<>();
       super();
     }
 
-    void recordAssignment(String name) {
+    void recordAssignment(String name, boolean inLoop) {
       assignmentCounts.merge(name, 1, Integer::sum);
+      if (inLoop) {
+        loopAssigned.add(name);
+      }
     }
   }
 
@@ -74,7 +79,7 @@ public final class ScopeAnalyzer {
     var functionScopes = new IdentityHashMap<Stmt.FunctionDef, Scope>();
     var module = new Scope(null, /*isFunction=*/false);
 
-    collectStatements(script.body().stmts(), module, functionScopes);
+    collectStatements(script.body().stmts(), module, /*inLoop=*/false, functionScopes);
     resolveStatements(script.body().stmts(), module, functionScopes);
     checkEffectivelyFinal(module);
     checkDefiniteAssignment(script.body().stmts(), module, functionScopes);
@@ -93,62 +98,70 @@ public final class ScopeAnalyzer {
   // ---------------------------------------------------------------------
 
   private static void collectStatements(
-      List<Stmt> stmts, Scope scope,
+      List<Stmt> stmts, Scope scope, boolean inLoop,
       IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
     for (var stmt : stmts) {
-      collectStatement(stmt, scope, functionScopes);
+      collectStatement(stmt, scope, inLoop, functionScopes);
     }
   }
 
   private static void collectStatement(
-      Stmt stmt, Scope scope,
+      Stmt stmt, Scope scope, boolean inLoop,
       IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
     switch (stmt) {
       case Stmt.Assign(var targets, _, _, _) -> {
         for (var target : targets) {
-          collectTargetBinding(target, scope);
+          collectTargetBinding(target, scope, inLoop);
         }
       }
-      case Stmt.AugAssign(var target, _, _, _, _) -> collectTargetBinding(target, scope);
+      case Stmt.AugAssign(var target, _, _, _, _) -> collectTargetBinding(target, scope, inLoop);
       case Stmt.Del _, Stmt.ExprStmt _, Stmt.Return _, Stmt.Break _, Stmt.Continue _ -> { }
       case Stmt.If(_, var body, var orElse, _, _) -> {
-        collectStatements(body.stmts(),   scope, functionScopes);
-        collectStatements(orElse.stmts(), scope, functionScopes);
+        collectStatements(body.stmts(), scope, inLoop, functionScopes);
+        collectStatements(orElse.stmts(), scope, inLoop, functionScopes);
       }
       case Stmt.While(_, var body, var orElse, _, _) -> {
-        collectStatements(body.stmts(),   scope, functionScopes);
-        collectStatements(orElse.stmts(), scope, functionScopes);
+        collectStatements(body.stmts(), scope, /*inLoop=*/true, functionScopes);
+        collectStatements(orElse.stmts(), scope, inLoop, functionScopes);
       }
       case Stmt.For(var target, _, var body, var orElse, _, _) -> {
-        collectTargetBinding(target, scope);
-        collectStatements(body.stmts(),   scope, functionScopes);
-        collectStatements(orElse.stmts(), scope, functionScopes);
+        collectTargetBinding(target, scope, /*inLoop=*/true);
+        collectStatements(body.stmts(), scope, /*inLoop=*/true, functionScopes);
+        collectStatements(orElse.stmts(), scope, inLoop, functionScopes);
       }
-      case Stmt.FunctionDef s -> {
-        scope.locals.add(s.name());
-        scope.recordAssignment(s.name());
+      case Stmt.FunctionDef def -> {
+        scope.locals.add(def.name());
+        scope.recordAssignment(def.name(), inLoop);
 
         var child = new Scope(scope, /*isFunction=*/true);
-        child.function  = s;
-        for (var p : s.parameters()) { child.locals.add(p.name()); child.params.add(p.name()); }
-        s.rest().ifPresent(p ->       { child.locals.add(p.name()); child.params.add(p.name()); });
+        child.function  = def;
+        for (var param : def.parameters()) {
+          child.locals.add(param.name());
+          child.params.add(param.name());
+        }
+        def.rest().ifPresent(param -> {
+          child.locals.add(param.name());
+          child.params.add(param.name());
+        });
 
         scope.children.add(child);
-        functionScopes.put(s, child);
-        collectStatements(s.body().stmts(), child, functionScopes);
+        functionScopes.put(def, child);
+        collectStatements(def.body().stmts(), child, /*inLoop=*/false, functionScopes);
       }
     }
   }
 
-  private static void collectTargetBinding(Target target, Scope scope) {
+  private static void collectTargetBinding(Target target, Scope scope, boolean inLoop) {
     switch (target) {
       case Target.NameTarget(String id, _, _) -> {
         scope.locals.add(id);
-        scope.recordAssignment(id);
+        scope.recordAssignment(id, inLoop);
       }
       case Target.SubscriptTarget _ -> { }
       case Target.TupleTarget(var elements, _, _) -> {
-        for (var e : elements) collectTargetBinding(e, scope);
+        for (var element : elements) {
+          collectTargetBinding(element, scope, inLoop);
+        }
       }
     }
   }
@@ -329,6 +342,12 @@ public final class ScopeAnalyzer {
               : "local variable '" + name + "' is captured by '" + capturing.function.name()
               + "' but assigned " + count + " times (at most " + allowed + " allowed)";
           throw new SemanticErrorException(msg, capturing.function.line(), capturing.function.column());
+        }
+        if (scope.loopAssigned.contains(name)) {
+          throw new SemanticErrorException(
+              "variable '" + name + "' is captured by '" + capturing.function.name()
+                  + "' but assigned inside a loop in '" + functionName(scope) + "'",
+              capturing.function.line(), capturing.function.column());
         }
       }
     }
