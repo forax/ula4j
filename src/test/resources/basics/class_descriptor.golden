@@ -1,0 +1,12 @@
+get
+True
+True
+result
+set
+True
+a
+delete
+True
+True
+123
+AttributeError
