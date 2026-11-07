@@ -13,67 +13,92 @@ import java.util.List;
 /// A call site `(Object callee, Object arg0, ..., Object argN-1) -> Object`.
 /// Each site owns a bounded chain of guards on the entry of the callee.
 final class FunctionCallSite extends MutableCallSite {
-  private static final MethodHandle FALLBACK, SAME_ENTRY, MEGAMORPHIC, FROM_ARRAY;
-
+  private static final MethodHandle FALLBACK, SAME_ENTRY;
   static {
     var lookup = MethodHandles.lookup();
     try {
       FALLBACK = lookup.findVirtual(FunctionCallSite.class, "fallback",
-          MethodType.methodType(Object.class, Object.class, Object[].class));
+          MethodType.methodType(MethodHandle.class, Object.class));
       SAME_ENTRY = lookup.findStatic(FunctionCallSite.class, "sameEntry",
           MethodType.methodType(boolean.class, MethodHandle.class, Object.class));
-      MEGAMORPHIC = lookup.findStatic(FunctionCallSite.class, "megamorphic",
-          MethodType.methodType(Object.class, Object.class, Object[].class));
-      FROM_ARRAY = lookup.findStatic(TupleIntrinsics.class, "fromArray",
-          MethodType.methodType(PyTuple.class, Object[].class)).asFixedArity();
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new AssertionError(e);
     }
   }
 
+  private static final class Megamorphic {
+    static final MethodHandle ENTRY;
+    static {
+      var lookup = MethodHandles.lookup();
+      try {
+        ENTRY = lookup.findVirtual(PyFunction.class, "entry", MethodType.methodType(MethodHandle.class))
+          .asType(MethodType.methodType(MethodHandle.class, Object.class));
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
+    }
+  }
+
+  private static final class RestAdapter {
+    private static final MethodHandle FROM_ARRAY;
+    static {
+      var lookup = MethodHandles.lookup();
+      try {
+        FROM_ARRAY = lookup.findStatic(TupleIntrinsics.class, "fromArray",
+            MethodType.methodType(PyTuple.class, Object[].class)).asFixedArity();
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
+    }
+  }
+
   private static final int MAX_DEPTH = 4;
 
-  private int depth;
+  private final FunctionCallSite root;
+  private final int depth;
 
   FunctionCallSite(MethodType type) {
+    depth = 0;
     super(type);
-    var argc = type.parameterCount() - 1;
-    setTarget(FALLBACK.bindTo(this).asCollector(Object[].class, argc).asType(type));
+    root = this;
+    setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
   }
 
-  Object fallback(Object callee, Object[] args) throws Throwable {
+  private FunctionCallSite(MethodType type, FunctionCallSite root, int depth) {
+    this.root = root;
+    this.depth = depth;
+    super(type);
+    setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
+  }
+
+  MethodHandle fallback(Object callee) throws Throwable {
     var function = asFunction(callee);
-    var compiled = function.isCompiled();  // read the flag first: if set, entry is the compiled one
     var entry = function.entry();
-    var adapted = adapt(function, entry, args.length);
+    var argc = type().parameterCount() - 1;
+    var adapted = adapt(function, entry, argc).asType(type());
+    var compiled = function.isCompiled();
     if (compiled) {
       link(entry, adapted);
-    }  // else the first call goes through the compiling trampoline, the next call links
-    return adapted.invokeWithArguments(prepend(function, args));
-  }
-
-  private void link(MethodHandle entry, MethodHandle adapted) {
-    if (depth >= MAX_DEPTH) {
-      var argc = type().parameterCount() - 1;
-      setTarget(MEGAMORPHIC.asCollector(Object[].class, argc).asType(type()));
-      return;
     }
-    depth++;
-    var test = MethodHandles.insertArguments(SAME_ENTRY, 0, entry);  // (Object) -> boolean
-    setTarget(MethodHandles.guardWithTest(test, adapted.asType(type()), getTarget()));
+    // the first call goes through the compiling trampoline, the next call links
+    return adapted;
   }
-
-  // ------------------------------------------------------------------ helpers
 
   private static boolean sameEntry(MethodHandle expected, Object callee) {
     return callee instanceof PyFunction f && f.entry() == expected;
   }
 
-  private static Object megamorphic(Object callee, Object[] args) throws Throwable {
-    var function = asFunction(callee);
-    var adapted = adapt(function, function.entry(), args.length);
-    return adapted.invokeWithArguments(prepend(function, args));
+  private void link(MethodHandle entry, MethodHandle adapted) {
+    if (depth >= MAX_DEPTH) {
+      root.setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), Megamorphic.ENTRY));
+      return;
+    }
+    var test = SAME_ENTRY.bindTo(entry);
+    var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
+    setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
   }
+
+  // ------------------------------------------------------------------ helpers
 
   private static PyFunction asFunction(Object callee) {
     if (callee instanceof PyFunction function) {
@@ -94,7 +119,7 @@ final class FunctionCallSite extends MutableCallSite {
     if (argc < arity) {
       throw arityError(function, argc);
     }
-    var packer = FROM_ARRAY.asCollector(Object[].class, argc - arity);  // (Object x extra) -> PyTuple
+    var packer = RestAdapter.FROM_ARRAY.asCollector(Object[].class, argc - arity);  // (Object x extra) -> PyTuple
     return MethodHandles.collectArguments(entry, arity + 1, packer);
   }
 
@@ -121,12 +146,5 @@ final class FunctionCallSite extends MutableCallSite {
         yield sb.append("and '").append(names.getLast()).append('\'').toString();
       }
     };
-  }
-
-  private static Object[] prepend(Object first, Object[] rest) {
-    var all = new Object[rest.length + 1];
-    all[0] = first;
-    System.arraycopy(rest, 0, all, 1, rest.length);
-    return all;
   }
 }
