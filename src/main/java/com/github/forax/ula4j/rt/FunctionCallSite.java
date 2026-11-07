@@ -118,7 +118,7 @@ final class FunctionCallSite extends MutableCallSite {
         for (var i = 0; i < names.size() - 1; i++) {
           sb.append('\'').append(names.get(i)).append("', ");
         }
-        yield sb.append("and '").append(names.get(names.size() - 1)).append('\'').toString();
+        yield sb.append("and '").append(names.getLast()).append('\'').toString();
       }
     };
   }
