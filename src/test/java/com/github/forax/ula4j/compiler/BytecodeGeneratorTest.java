@@ -53,6 +53,65 @@ public final class BytecodeGeneratorTest {
       assertEquals("tab\there", eval("x = 'tab\\there'", "x"));
       assertEquals("\\", eval("x = '\\\\'", "x"));
     }
+
+    @Test
+    public void noneCanBeComparedAndSelected() throws Throwable {
+      assertEquals(true, eval("x = None == None", "x"));
+      assertEquals(7L, eval("x = 7 if not None else 9", "x"));
+      assertEquals(9L, eval("x = 7 if None else 9", "x"));
+    }
+
+    @Test
+    public void integerLongBoundaryAndPromotion() throws Throwable {
+      assertEquals(Long.MAX_VALUE, eval("x = 9223372036854775807", "x"));
+      assertEquals(new BigInteger("9223372036854775808"),
+          eval("x = 9223372036854775808", "x"));
+      assertEquals(new BigInteger("9223372036854775808"),
+          eval("x = 9223372036854775807 + 1", "x"));
+    }
+
+    @Test
+    public void scientificNotationVariants() throws Throwable {
+      assertEquals(1.0e3, eval("x = 1e3", "x"));
+      assertEquals(2.5e-4, eval("x = 2.5e-4", "x"));
+      assertEquals(6.0e2, eval("x = 6E+2", "x"));
+    }
+
+    @Test
+    public void escapedQuotesAndCarriageReturn() throws Throwable {
+      assertEquals("it's", eval("x = 'it\\'s'", "x"));
+      assertEquals("say \"hi\"", eval("x = \"say \\\"hi\\\"\"", "x"));
+      assertEquals("a\rb", eval("x = 'a\\rb'", "x"));
+    }
+
+    @Test
+    public void unicodeCodePointsSurviveStringConstruction() throws Throwable {
+      assertEquals("A😀Ω", eval("x = 'A😀Ω'", "x"));
+      assertEquals("𝄞", eval("x = '𝄞'", "x"));
+    }
+  }
+
+  @Nested
+  public final class LongString {
+
+    @Test
+    public void veryLongAsciiStringLiteral() throws Throwable {
+      var longStr = "a".repeat(70_000);  // > 65535 modified-UTF-8 bytes
+      assertEquals(longStr, eval("x = '" + longStr + "'", "x"));
+    }
+
+    @Test
+    public void veryLongEmojiStringLiteral() throws Throwable {
+      var emoji = Character.toString(0x1F600);     // one supplementary char
+      var longEmoji = emoji.repeat(20_000);        // 40000 Java chars, chunked
+      assertEquals(longEmoji, eval("x = '" + longEmoji + "'", "x"));
+    }
+
+    @Test
+    public void shortUnicodeString() throws Throwable {
+      assertEquals("héllo", eval("x = 'héllo'", "x"));
+      assertEquals("😀", eval("x = '😀'", "x"));
+    }
   }
 
   @Nested
@@ -131,6 +190,83 @@ public final class BytecodeGeneratorTest {
       assertEquals(9L, eval("x = (1 + 2) * 3", "x"));
       assertEquals(1L, eval("x = 1 + 2 - 2", "x"));
     }
+
+    @Test
+    public void integerArithmeticAndOperatorPrecedence() throws Throwable {
+      assertEquals(7L, eval("x = 20 - 3 * 4 - 1", "x"));
+      assertEquals(20L, eval("x = 2 * (3 + 7)", "x"));
+      assertEquals(6L, eval("x = 20 // 3", "x"));
+      assertEquals(2L, eval("x = 20 % 3", "x"));
+    }
+
+    @Test
+    public void exponentiationIsRightAssociative() throws Throwable {
+      assertEquals(512L, eval("x = 2 ** 3 ** 2", "x"));
+      assertEquals(64L, eval("x = (2 ** 3) ** 2", "x"));
+    }
+
+    @Test
+    public void unaryMinusBindsAsPythonDoesAroundPower() throws Throwable {
+      assertEquals(-4L, eval("x = -2 ** 2", "x"));
+      assertEquals(4L, eval("x = (-2) ** 2", "x"));
+      assertEquals(-4L, eval("x = -(2 ** 2)", "x"));
+    }
+
+    @Test
+    public void floorDivisionAndModuloHaveConsistentSigns() throws Throwable {
+      assertEquals(-3L, eval("x = -7 // 3", "x"));
+      assertEquals(2L, eval("x = -7 % 3", "x"));
+      assertEquals(-3L, eval("x = 7 // -3", "x"));
+      assertEquals(-2L, eval("x = 7 % -3", "x"));
+      assertEquals(2L, eval("x = -7 // -3", "x"));
+      assertEquals(-1L, eval("x = -7 % -3", "x"));
+    }
+
+    @Test
+    public void integerAndBigIntegerBitwiseOperations() throws Throwable {
+      assertEquals(4L, eval("x = 12 & 5", "x"));
+      assertEquals(13L, eval("x = 12 | 5", "x"));
+      assertEquals(9L, eval("x = 12 ^ 5", "x"));
+      assertEquals(-13L, eval("x = ~12", "x"));
+      assertEquals(BigInteger.ONE.shiftLeft(100),
+          eval("x = 1 << 100", "x"));
+    }
+
+    @Test
+    public void shiftsAndInversionOnNegativeNumbers() throws Throwable {
+      assertEquals(-8L, eval("x = -2 << 2", "x"));
+      assertEquals(-2L, eval("x = -8 >> 2", "x"));
+      assertEquals(1L, eval("x = ~(-2)", "x"));
+    }
+
+    @Test
+    public void floatingPointFloorDivisionAndModulo() throws Throwable {
+      assertEquals(-3.0, eval("x = -7.0 // 3.0", "x"));
+      assertEquals(2.0, eval("x = -7.0 % 3.0", "x"));
+      assertEquals(-3.0, eval("x = 7.0 // -3.0", "x"));
+      assertEquals(-2.0, eval("x = 7.0 % -3.0", "x"));
+    }
+
+    @Test
+    public void stringConcatenationAndRepetitionCompose() throws Throwable {
+      assertEquals("abababab", eval("x = ('ab' * 2) + ('ab' * 2)", "x"));
+      assertEquals("xxxx", eval("x = 'x' * (2 + 2)", "x"));
+      assertEquals("", eval("x = 'x' * -3", "x"));
+    }
+
+    @Test
+    public void nestedUnaryOperators() throws Throwable {
+      assertEquals(3L, eval("x = -(-(+3))", "x"));
+      assertEquals(false, eval("x = not not False", "x"));
+    }
+
+    @Test
+    public void arithmeticWithLargeIntegersRemainsExact() throws Throwable {
+      assertEquals(new BigInteger("246913578024691357802469135780"),
+          eval("x = 123456789012345678901234567890 * 2", "x"));
+      assertEquals(new BigInteger("123456789012345678901234567890"),
+          eval("x = 123456789012345678901234567891 - 1", "x"));
+    }
   }
 
   @Nested
@@ -155,6 +291,50 @@ public final class BytecodeGeneratorTest {
     @Test
     public void augAssignOnUndefinedNameIsANameError() {
       assertThrows(PyNameError.class, () -> Compiler.run("x += 1"));
+    }
+
+    @Test
+    public void augmentedAssignmentReadsOldValueBeforeWriting() throws Throwable {
+      assertEquals(10L, eval("x = 5\nx += x", "x"));
+      assertEquals(25L, eval("x = 5\nx *= x", "x"));
+    }
+
+    @Test
+    public void augmentedAssignmentCanUseAnExpressionAsItsRightHandSide() throws Throwable {
+      assertEquals(14L, eval("x = 2\ny = 3\nx += y * 4", "x"));
+      assertEquals(2L, eval("x = 20\ny = 3\nx //= y + 7", "x"));
+    }
+
+    @Test
+    public void augmentedStringAssignment() throws Throwable {
+      assertEquals("hello world", eval("x = 'hello'\nx += ' world'", "x"));
+      assertEquals("ababab", eval("x = 'ab'\nx *= 3", "x"));
+    }
+
+    @Test
+    public void augmentedAssignmentInsideFunctionUsesLocalSlot() throws Throwable {
+      var source = """
+          def f(value):
+              value += 3
+              value *= 2
+              return value
+          r = f(4)
+          """;
+      assertEquals(14L, eval(source, "r"));
+    }
+
+    @Test
+    public void augmentedAssignmentOnParameterDoesNotChangeCallerValue() throws Throwable {
+      var source = """
+          def f(value):
+              value += 1
+              return value
+          original = 10
+          changed = f(original)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(10L, module.getGlobal("original"));
+      assertEquals(11L, module.getGlobal("changed"));
     }
   }
 
@@ -233,6 +413,49 @@ public final class BytecodeGeneratorTest {
       assertEquals(true, eval("x = 'a' in 'abc' and 'b' in 'abc'", "x"));
       assertEquals(false, eval("x = 'a' in 'abc' and 'z' in 'abc'", "x"));
     }
+
+    @Test
+    public void comparisonOperatorsReturnFalseAsWellAsTrue() throws Throwable {
+      assertEquals(false, eval("x = 2 < 1", "x"));
+      assertEquals(false, eval("x = 2 <= 1", "x"));
+      assertEquals(false, eval("x = 1 > 2", "x"));
+      assertEquals(false, eval("x = 1 >= 2", "x"));
+      assertEquals(false, eval("x = 1 == 2", "x"));
+      assertEquals(false, eval("x = 1 != 1", "x"));
+    }
+
+    @Test
+    public void comparisonChainsStopAfterFirstFalseComparison() throws Throwable {
+      assertEquals(false, eval("x = 3 < 2 < undefined", "x"));
+      assertEquals(false, eval("x = 1 > 2 < undefined", "x"));
+      assertEquals(true, eval("x = 1 < 2 < 3 < 4 < 5", "x"));
+    }
+
+    @Test
+    public void comparisonChainsCanMixOperators() throws Throwable {
+      assertEquals(true, eval("x = 1 < 2 <= 2 == 2 < 3", "x"));
+      assertEquals(false, eval("x = 1 < 2 != 2 < 3", "x"));
+    }
+
+    @Test
+    public void containmentCanBeUsedInChains() throws Throwable {
+      assertEquals(true, eval("x = 'a' in 'abc' == 'abc'", "x"));
+      assertEquals(true, eval("x = 'a' in 'abc' and 'bc' in 'abcd'", "x"));
+      assertEquals(false, eval("x = 'z' in 'abc' or 'z' in 'def'", "x"));
+    }
+
+    @Test
+    public void stringOrderingUsesLexicographicComparison() throws Throwable {
+      assertEquals(true, eval("x = 'abc' < 'abcd'", "x"));
+      assertEquals(true, eval("x = 'b' > 'azzz'", "x"));
+      assertEquals(true, eval("x = '' <= 'a'", "x"));
+    }
+
+    @Test
+    public void equalValuesOfDifferentNumericRepresentationsCompare() throws Throwable {
+      assertEquals(true, eval("x = 1 == 1.0", "x"));
+      assertEquals(false, eval("x = 1 != 1.0", "x"));
+    }
   }
 
   @Nested
@@ -278,6 +501,44 @@ public final class BytecodeGeneratorTest {
       assertEquals(true, eval("x = (0 or '') == ''", "x"));
       assertEquals(true, eval("x = (0 and '') == 0", "x"));
     }
+
+    @Test
+    public void truthinessCoversNumericAndStringEdgeValues() throws Throwable {
+      assertEquals(true, eval("x = not 0.0", "x"));
+      assertEquals(true, eval("x = not -0.0", "x"));
+      assertEquals(false, eval("x = not -0.25", "x"));
+      assertEquals(true, eval("x = not ''", "x"));
+      assertEquals(false, eval("x = not '0'", "x"));
+    }
+
+    @Test
+    public void andAndOrReturnTheActualSelectedOperand() throws Throwable {
+      assertEquals("", eval("x = 'left' and ''", "x"));
+      assertEquals("left", eval("x = 'left' or 'right'", "x"));
+      assertEquals(0L, eval("x = 0 and 'right'", "x"));
+      assertEquals("right", eval("x = 0 or 'right'", "x"));
+    }
+
+    @Test
+    public void andOrPrecedenceAndParentheses() throws Throwable {
+      assertEquals(1L, eval("x = 1 or 0 and 2", "x"));
+      assertEquals(0L, eval("x = (1 or 0) and 0", "x"));
+      assertEquals(3L, eval("x = 0 or 1 and 3", "x"));
+    }
+
+    @Test
+    public void everySkippedBooleanOperandRemainsUnevaluated() throws Throwable {
+      assertEquals(false, eval("x = False and missing_a and missing_b", "x"));
+      assertEquals(true, eval("x = True or missing_a or missing_b", "x"));
+      assertEquals("ok", eval("x = None or '' or 'ok'", "x"));
+    }
+
+    @Test
+    public void nestedNotAndBooleanExpressions() throws Throwable {
+      assertEquals(true, eval("x = not (0 or '')", "x"));
+      assertEquals(false, eval("x = not (1 and 'yes')", "x"));
+      assertEquals(true, eval("x = not (1 and 0)", "x"));
+    }
   }
 
 
@@ -295,6 +556,27 @@ public final class BytecodeGeneratorTest {
     public void conditionalExpressionIsLazy() throws Throwable {
       assertEquals(1L, eval("x = 1 if True else undefined", "x"));
       assertEquals(2L, eval("x = undefined if False else 2", "x"));
+    }
+
+    @Test
+    public void conditionalUsesTruthinessRatherThanBooleanIdentity() throws Throwable {
+      assertEquals("yes", eval("x = 'yes' if 1 else 'no'", "x"));
+      assertEquals("no", eval("x = 'yes' if 0 else 'no'", "x"));
+      assertEquals("yes", eval("x = 'yes' if 'truthy' else 'no'", "x"));
+      assertEquals("no", eval("x = 'yes' if '' else 'no'", "x"));
+    }
+
+    @Test
+    public void nestedConditionalExpressionsChooseOnlyOneBranch() throws Throwable {
+      assertEquals(30L, eval("x = 10 if False else 20 if False else 30", "x"));
+      assertEquals(20L, eval("x = 10 if False else 20 if True else 30", "x"));
+      assertEquals(10L, eval("x = 10 if True else 20 if True else 30", "x"));
+    }
+
+    @Test
+    public void onlySelectedConditionalBranchIsEvaluated() throws Throwable {
+      assertEquals(1L, eval("x = 1 if 1 else missing", "x"));
+      assertEquals(2L, eval("x = missing if 0 else 2", "x"));
     }
   }
 
@@ -314,6 +596,68 @@ public final class BytecodeGeneratorTest {
     @Test
     public void ifVariableAssignedInsideIsReadable() throws Throwable {
       assertEquals(10L, eval("x = 1\nif x:\n    y = 10\nr = y", "r"));
+    }
+
+    @Test
+    public void elifSelectsTheFirstTruthyBranch() throws Throwable {
+      var source = """
+          value = 0
+          if False:
+              value = 1
+          elif 0:
+              value = 2
+          elif 'yes':
+              value = 3
+          else:
+              value = 4
+          r = value
+          """;
+      assertEquals(3L, eval(source, "r"));
+    }
+
+    @Test
+    public void elifFallsThroughToElse() throws Throwable {
+      var source = """
+          value = 0
+          if False:
+              value = 1
+          elif False:
+              value = 2
+          else:
+              value = 3
+          r = value
+          """;
+      assertEquals(3L, eval(source, "r"));
+    }
+
+    @Test
+    public void nestedIfElseBindsToNearestIf() throws Throwable {
+      var source = """
+          value = 0
+          if True:
+              if False:
+                  value = 1
+              else:
+                  value = 2
+          else:
+              value = 3
+          r = value
+          """;
+      assertEquals(2L, eval(source, "r"));
+    }
+
+    @Test
+    public void branchesCanContainMultipleStatements() throws Throwable {
+      var source = """
+          x = 1
+          y = 2
+          if True:
+              x += 4
+              y *= 3
+              z = x + y
+          r = z
+          """;
+      assertEquals(11L, eval(source, "r"));
     }
 
     // -- while
@@ -372,6 +716,102 @@ public final class BytecodeGeneratorTest {
           r = x
           """;
       assertEquals(2L, eval(source, "r"));
+    }
+
+    @Test
+    public void whileConditionIsReevaluatedAfterEachIteration() throws Throwable {
+      var source = """
+          i = 0
+          total = 0
+          while i < 4:
+              total += i
+              i += 1
+          r = total
+          """;
+      assertEquals(6L, eval(source, "r"));
+    }
+
+    @Test
+    public void whileElseRunsWhenConditionIsInitiallyFalse() throws Throwable {
+      var source = """
+          value = 1
+          while False:
+              value = 2
+          else:
+              value = 3
+          r = value
+          """;
+      assertEquals(3L, eval(source, "r"));
+    }
+
+    @Test
+    public void whileElseRunsAfterContinueAndNormalExhaustion() throws Throwable {
+      var source = """
+          i = 0
+          total = 0
+          while i < 4:
+              i += 1
+              if i % 2 == 0:
+                  continue
+              total += i
+          else:
+              total += 10
+          r = total
+          """;
+      assertEquals(14L, eval(source, "r"));
+    }
+
+    @Test
+    public void breakSkipsWhileElseEvenWhenNestedInIf() throws Throwable {
+      var source = """
+          i = 0
+          value = 0
+          while i < 10:
+              i += 1
+              if i == 2:
+                  if True:
+                      break
+          else:
+              value = 100
+          r = i + value
+          """;
+      assertEquals(2L, eval(source, "r"));
+    }
+
+    @Test
+    public void nestedWhileLoopsUseTheirOwnContinueTargets() throws Throwable {
+      var source = """
+          outer = 0
+          total = 0
+          while outer < 3:
+              outer += 1
+              inner = 0
+              while inner < 3:
+                  inner += 1
+                  if inner == 2:
+                      continue
+                  total += 1
+          r = total
+          """;
+      assertEquals(6L, eval(source, "r"));
+    }
+
+    @Test
+    public void nestedWhileBreakOnlyExitsInnerLoop() throws Throwable {
+      var source = """
+          outer = 0
+          total = 0
+          while outer < 3:
+              outer += 1
+              inner = 0
+              while inner < 5:
+                  inner += 1
+                  if inner == 2:
+                      break
+                  total += 1
+          r = total
+          """;
+      assertEquals(3L, eval(source, "r"));
     }
 
     // -- for
@@ -462,6 +902,93 @@ public final class BytecodeGeneratorTest {
           """;
       assertEquals(4L, eval(source, "r"));
     }
+
+    @Test
+    public void forIteratesEveryStringCharacterInOrder() throws Throwable {
+      var source = """
+          result = ''
+          for ch in 'abcd':
+              result += ch
+          r = result
+          """;
+      assertEquals("abcd", eval(source, "r"));
+    }
+
+    @Test
+    public void forIteratesSupplementaryUnicodeAsOneCodePoint() throws Throwable {
+      var source = """
+          count = 0
+          result = ''
+          for ch in 'a😀b':
+              count += 1
+              result += ch
+          r1 = count
+          r2 = result
+          """;
+      var module = Compiler.run(source);
+      assertEquals(3L, module.getGlobal("r1"));
+      assertEquals("a😀b", module.getGlobal("r2"));
+    }
+
+    @Test
+    public void forElseRunsAfterContinueAndNormalExhaustion() throws Throwable {
+      var source = """
+          total = 0
+          for ch in 'abc':
+              if ch == 'b':
+                  continue
+              total += 1
+          else:
+              total += 10
+          r = total
+          """;
+      assertEquals(12L, eval(source, "r"));
+    }
+
+    @Test
+    public void nestedForLoopsReuseLoopVariableSlotsSafely() throws Throwable {
+      var source = """
+          total = 0
+          for a in 'ab':
+              for b in 'xyz':
+                  total += 1
+          r = total
+          """;
+      assertEquals(6L, eval(source, "r"));
+    }
+
+    @Test
+    public void innerForBreakDoesNotSuppressOuterForElse() throws Throwable {
+      var source = """
+          total = 0
+          for a in 'ab':
+              for b in 'xyz':
+                  break
+              total += 1
+          else:
+              total += 10
+          r = total
+          """;
+      assertEquals(12L, eval(source, "r"));
+    }
+
+    @Test
+    public void forLoopVariableRetainsLastValueAfterExhaustion() throws Throwable {
+      assertEquals("c", eval("for ch in 'abc':\n    last = ch\nr = ch", "r"));
+    }
+
+    @Test
+    public void forLoopCanAccumulateAStringAndACharacterCount() throws Throwable {
+      var source = """
+          count = 0
+          joined = ''
+          for ch in 'xy':
+              count += 1
+              joined += ch
+          r = count * 10 + (1 if joined == 'xy' else 0)
+          """;
+      assertEquals(21L, eval(source, "r"));
+    }
   }
 
 
@@ -534,6 +1061,186 @@ public final class BytecodeGeneratorTest {
       assertEquals(0L, module.getGlobal("a"));
       assertEquals(1L, module.getGlobal("b"));
       assertEquals(3L, module.getGlobal("c"));
+    }
+
+    @Test
+    public void oneAndSeveralPositionalParameters() throws Throwable {
+      var source = """
+          def one(a):
+              return a
+          def many(a, b, c, d, e):
+              return a + b + c + d + e
+          r1 = one(42)
+          r2 = many(1, 2, 3, 4, 5)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(42L, module.getGlobal("r1"));
+      assertEquals(15L, module.getGlobal("r2"));
+    }
+
+    @Test
+    public void parametersCanBeReassignedIndependently() throws Throwable {
+      var source = """
+          def f(a, b):
+              a += 10
+              b *= 2
+              return a + b
+          r = f(1, 3)
+          """;
+      assertEquals(17L, eval(source, "r"));
+    }
+
+    @Test
+    public void functionCanReturnFromNestedControlFlow() throws Throwable {
+      var source = """
+          def choose(x):
+              if x < 0:
+                  return -1
+              elif x == 0:
+                  return 0
+              else:
+                  return 1
+          a = choose(-5)
+          b = choose(0)
+          c = choose(7)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(-1L, module.getGlobal("a"));
+      assertEquals(0L, module.getGlobal("b"));
+      assertEquals(1L, module.getGlobal("c"));
+    }
+
+    @Test
+    public void directRecursionWorksAcrossRepeatedCalls() throws Throwable {
+      var source = """
+          def factorial(n):
+              if n <= 1:
+                  return 1
+              return n * factorial(n - 1)
+          a = factorial(5)
+          b = factorial(6)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(120L, module.getGlobal("a"));
+      assertEquals(720L, module.getGlobal("b"));
+    }
+
+    @Test
+    public void repeatedCallsUseTheSameFunctionCorrectly() throws Throwable {
+      var source = """
+          def add(a, b):
+              return a + b
+          total = 0
+          total += add(1, 2)
+          total += add(3, 4)
+          total += add(5, 6)
+          r = total
+          """;
+      assertEquals(21L, eval(source, "r"));
+    }
+
+    @Test
+    public void functionValuesCanBePassedAndCalledAtOneCallSite() throws Throwable {
+      var source = """
+          def increment(x):
+              return x + 1
+          def double(x):
+              return x * 2
+          def apply(fn, value):
+              return fn(value)
+          a = apply(increment, 10)
+          b = apply(double, 10)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(11L, module.getGlobal("a"));
+      assertEquals(20L, module.getGlobal("b"));
+    }
+
+    @Test
+    public void functionCanBeAliasedBeforeOriginalNameIsRebound() throws Throwable {
+      var source = """
+          def f():
+              return 1
+          old_f = f
+          def f():
+              return 2
+          a = old_f()
+          b = f()
+          """;
+      var module = Compiler.run(source);
+      assertEquals(1L, module.getGlobal("a"));
+      assertEquals(2L, module.getGlobal("b"));
+    }
+
+    @Test
+    public void fixedParametersAndEmptyRestArray() throws Throwable {
+      var source = """
+          def f(first, *rest):
+              count = 0
+              for item in rest:
+                  count += 1
+              return first + count
+          a = f(10)
+          b = f(10, 20, 30)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(10L, module.getGlobal("a"));
+      assertEquals(12L, module.getGlobal("b"));
+    }
+
+    @Test
+    public void fixedParametersAndRestValuesCanBeAccumulated() throws Throwable {
+      var source = """
+          def sum_from(first, *rest):
+              total = first
+              for item in rest:
+                  total += item
+              return total
+          r1 = sum_from(5)
+          r2 = sum_from(5, 1, 2, 3)
+          """;
+      var module = Compiler.run(source);
+      assertEquals(5L, module.getGlobal("r1"));
+      assertEquals(11L, module.getGlobal("r2"));
+    }
+
+    @Test
+    public void varargsFunctionAcceptsManyArguments() throws Throwable {
+      var source = """
+          def count(*items):
+              n = 0
+              for item in items:
+                  n += 1
+              return n
+          r = count(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+          """;
+      assertEquals(10L, eval(source, "r"));
+    }
+
+    @Test
+    public void tooFewArgumentsRaisesTypeError() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("def f(a, b):\n    return a + b\nf(1)"));
+    }
+
+    @Test
+    public void tooManyArgumentsRaisesTypeErrorForFixedArityFunction() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("def f(a):\n    return a\nf(1, 2)"));
+    }
+
+    @Test
+    public void missingFixedArgumentRaisesTypeErrorForVarargsFunction() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("def f(a, *rest):\n    return a\nf()"));
+    }
+
+    @Test
+    public void callingFunctionWithWrongArityAfterEarlierValidCallStillFails() {
+      var source = """
+          def f(value):
+              return value
+          first = f(1)
+          f(1, 2)
+          """;
+      assertThrows(PyTypeError.class, () -> Compiler.run(source));
     }
   }
 
@@ -626,6 +1333,111 @@ public final class BytecodeGeneratorTest {
           """;
       assertEquals(6L, eval(source, "r"));
     }
+
+    @Test
+    public void multipleCapturedValuesKeepTheirDeclaredOrder() throws Throwable {
+      var source = """
+          def outer(a):
+              b = a + 10
+              c = b + 100
+              def inner(d):
+                  return a + b + c + d
+              return inner(1)
+          r = outer(2)
+          """;
+      assertEquals(127L, eval(source, "r"));
+    }
+
+    @Test
+    public void differentClosuresFromSameDefinitionKeepIndependentCaptures() throws Throwable {
+      var source = """
+          def make(value):
+              def read():
+                  return value
+              return read
+          first = make(10)
+          second = make(20)
+          a = first()
+          b = second()
+          c = first()
+          """;
+      var module = Compiler.run(source);
+      assertEquals(10L, module.getGlobal("a"));
+      assertEquals(20L, module.getGlobal("b"));
+      assertEquals(10L, module.getGlobal("c"));
+    }
+
+    @Test
+    public void closureCanCaptureParameterAndLocalTogether() throws Throwable {
+      var source = """
+          def make(base):
+              extra = base * 2
+              def compute(value):
+                  return base + extra + value
+              return compute
+          f = make(3)
+          r = f(4)
+          """;
+      assertEquals(13L, eval(source, "r"));
+    }
+
+    @Test
+    public void nestedClosureCanCaptureThroughMoreThanOneLexicalLevel() throws Throwable {
+      var source = """
+          def outer(value):
+              def middle():
+                  def inner():
+                      return value
+                  return inner
+              return middle()
+          f = outer(42)
+          r = f()
+          """;
+      assertEquals(42L, eval(source, "r"));
+    }
+
+    @Test
+    public void localCaptureAndGlobalLookupCanCoexist() throws Throwable {
+      var source = """
+          global_value = 1
+          def outer(local_value):
+              def inner():
+                  return global_value + local_value
+              return inner
+          f = outer(10)
+          global_value = 5
+          r = f()
+          """;
+      assertEquals(15L, eval(source, "r"));
+    }
+
+    @Test
+    public void innerLocalShadowsOuterCapture() throws Throwable {
+      var source = """
+          def outer():
+              value = 1
+              def inner():
+                  value = 2
+                  return value
+              return inner()
+          r = outer()
+          """;
+      assertEquals(2L, eval(source, "r"));
+    }
+
+    @Test
+    public void closuresCreatedInSeparateCallsDoNotShareCaptureState() throws Throwable {
+      var source = """
+          def make(value):
+              def get():
+                  return value
+              return get
+          a = make(3)
+          b = make(8)
+          r = a() * 10 + b()
+          """;
+      assertEquals(38L, eval(source, "r"));
+    }
   }
 
   @Nested
@@ -672,12 +1484,73 @@ public final class BytecodeGeneratorTest {
           """;
       assertThrows(PyNameError.class, () -> Compiler.run(source));
     }
+
+    @Test
+    public void functionReadsGlobalAssignedAfterDefinition() throws Throwable {
+      var source = """
+          def read_later():
+              return later
+          later = 73
+          r = read_later()
+          """;
+      assertEquals(73L, eval(source, "r"));
+    }
+
+    @Test
+    public void functionReadsMostRecentGlobalValue() throws Throwable {
+      var source = """
+          value = 1
+          def read_value():
+              return value
+          first = read_value()
+          value = 99
+          second = read_value()
+          """;
+      var module = Compiler.run(source);
+      assertEquals(1L, module.getGlobal("first"));
+      assertEquals(99L, module.getGlobal("second"));
+    }
+
+    @Test
+    public void localNameShadowsGlobalForEntireFunction() throws Throwable {
+      var source = """
+          value = 100
+          def f():
+              value = 7
+              return value
+          local = f()
+          global_copy = value
+          """;
+      var module = Compiler.run(source);
+      assertEquals(7L, module.getGlobal("local"));
+      assertEquals(100L, module.getGlobal("global_copy"));
+    }
+
+    @Test
+    public void undefinedGlobalRaisesNameErrorWhenFunctionIsCalled() {
+      var source = """
+          def f():
+              return never_defined
+          f()
+          """;
+      assertThrows(PyNameError.class, () -> Compiler.run(source));
+    }
+
+    @Test
+    public void nameAssignedOnlyInsideFunctionDoesNotBecomeGlobal() {
+      var source = """
+          def f():
+              created_inside = 1
+          f()
+          result = created_inside
+          """;
+      assertThrows(PyNameError.class, () -> Compiler.run(source));
+    }
   }
 
 
   @Nested
   public final class RuntimeError {
-
 
     @Test
     public void typeErrors() {
@@ -700,29 +1573,123 @@ public final class BytecodeGeneratorTest {
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = {1: 2}"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = []"));
     }
+
+    @Test
+    public void invalidNumericAndBitwiseOperandCombinationsRaiseTypeError() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = 1 - 'a'"));
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = 1 * None"));
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = 1 << 1.5"));
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = 'a' // 2"));
+    }
+
+    @Test
+    public void callingNonFunctionValuesRaisesTypeError() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("value = 42\nvalue()"));
+      assertThrows(PyTypeError.class, () -> Compiler.run("value = 'text'\nvalue(1)"));
+    }
+
+    @Test
+    public void readingUndefinedTopLevelNameRaisesNameError() {
+      assertThrows(PyNameError.class, () -> Compiler.run("result = not_defined"));
+    }
+
+    @Test
+    public void unsupportedSubscriptAndTupleTargetsRemainRejected() {
+      assertThrows(UnsupportedSyntaxException.class,
+          () -> Compiler.run("value = 'abc'\nresult = value[0]"));
+      assertThrows(UnsupportedSyntaxException.class,
+          () -> Compiler.run("first, second = 1, 2"));
+    }
   }
 
-
   @Nested
-  public final class LongString {
-
+  public final class BytecodeStress {
     @Test
-    public void veryLongAsciiStringLiteral() throws Throwable {
-      var longStr = "a".repeat(70_000);  // > 65535 modified-UTF-8 bytes
-      assertEquals(longStr, eval("x = '" + longStr + "'", "x"));
+    public void manyMainLocalsReceiveDistinctSlots() throws Throwable {
+      var source = new StringBuilder();
+      var expected = 0L;
+      for (int i = 0; i < 100; i++) {
+        source.append('v').append(i).append(" = ").append(i).append('\n');
+        expected += i;
+      }
+      source.append("result = ");
+      for (int i = 0; i < 100; i++) {
+        if (i != 0) {
+          source.append(" + ");
+        }
+        source.append('v').append(i);
+      }
+      source.append('\n');
+      assertEquals(expected, eval(source.toString(), "result"));
     }
 
     @Test
-    public void veryLongEmojiStringLiteral() throws Throwable {
-      var emoji = Character.toString(0x1F600);     // one supplementary char
-      var longEmoji = emoji.repeat(20_000);        // 40000 Java chars, chunked
-      assertEquals(longEmoji, eval("x = '" + longEmoji + "'", "x"));
+    public void manyFunctionLocalsAndTemporariesDoNotOverlap() throws Throwable {
+      var source = new StringBuilder("def calculate(seed):\n    total = seed\n");
+      for (int i = 0; i < 60; i++) {
+        source.append("    value").append(i).append(" = ").append(i).append('\n');
+        source.append("    total += value").append(i).append('\n');
+      }
+      source.append("    return total\nr = calculate(10)\n");
+      assertEquals(10L + (59L * 60L / 2L), eval(source.toString(), "r"));
     }
 
     @Test
-    public void shortUnicodeString() throws Throwable {
-      assertEquals("héllo", eval("x = 'héllo'", "x"));
-      assertEquals("😀", eval("x = '😀'", "x"));
+    public void manyFunctionParametersAreLoadedFromCorrectSlots() throws Throwable {
+      var source = """
+          def combine(a, b, c, d, e, f, g, h):
+              return a + b * 10 + c * 100 + d * 1000 + e * 10000 + f * 100000 + g * 1000000 + h * 10000000
+          r = combine(1, 2, 3, 4, 5, 6, 7, 8)
+          """;
+      assertEquals(87_654_321L, eval(source, "r"));
+    }
+
+    @Test
+    public void chainedComparisonUsesManyIntermediateValues() throws Throwable {
+      assertEquals(true, eval("x = 0 < 1 < 2 < 3 < 4 < 5 < 6 < 7 < 8 < 9", "x"));
+    }
+
+    @Test
+    public void nestedBranchesAndLoopsPreserveStackAndLoopTargets() throws Throwable {
+      var source = """
+          total = 0
+          for outer in 'abc':
+              i = 0
+              while i < 4:
+                  i += 1
+                  if i == 2:
+                      continue
+                  elif i == 4:
+                      break
+                  else:
+                      if outer == 'b':
+                          total += 2
+                      else:
+                          total += 1
+          else:
+              total += 10
+          r = total
+          """;
+      assertEquals(18L, eval(source, "r"));
+    }
+
+    @Test
+    public void manyCapturedNamesAreBoundToTheirOwnValues() throws Throwable {
+      var source = """
+          def outer():
+              a = 1
+              b = 2
+              c = 3
+              d = 4
+              e = 5
+              f = 6
+              def inner():
+                  return a + b + c + d + e + f
+              return inner
+          get_values = outer()
+          r = get_values()
+          """;
+      assertEquals(21L, eval(source, "r"));
     }
   }
 }
