@@ -33,12 +33,11 @@ final class FunctionCallSite extends MutableCallSite {
 
   private static final int MAX_DEPTH = 4;
 
-  private final int argc;
   private int depth;
 
   FunctionCallSite(MethodType type) {
     super(type);
-    this.argc = type.parameterCount() - 1;
+    var argc = type.parameterCount() - 1;
     setTarget(FALLBACK.bindTo(this).asCollector(Object[].class, argc).asType(type));
   }
 
@@ -55,6 +54,7 @@ final class FunctionCallSite extends MutableCallSite {
 
   private void link(MethodHandle entry, MethodHandle adapted) {
     if (depth >= MAX_DEPTH) {
+      var argc = type().parameterCount() - 1;
       setTarget(MEGAMORPHIC.asCollector(Object[].class, argc).asType(type()));
       return;
     }
