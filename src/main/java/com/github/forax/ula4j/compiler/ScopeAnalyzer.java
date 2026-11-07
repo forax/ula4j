@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -25,38 +26,67 @@ public final class ScopeAnalyzer {
   }
 
   // ---------------------------------------------------------------------
-  // Internal scope
+  // FunctionScope: result of passes 1-3 for one function
   // ---------------------------------------------------------------------
 
-  private static final class Scope {
-    final Scope parent;
-    final boolean isFunction;
-    final LinkedHashSet<String> locals;
-    final LinkedHashSet<String> params;
-    final LinkedHashSet<String> frees;
-    final LinkedHashMap<String, Integer> assignmentCounts ;
-    final LinkedHashSet<String> loopAssigned;
-    final ArrayList<Scope> children;
+  /**
+   * The result of passes 1, 2 and 3 for one function. It can only be obtained from
+   * {@link #resolveTopLevel(Stmt.FunctionDef)} or from {@link #inner(Stmt.FunctionDef)},
+   * so holding one guarantees that the resolution has been done.
+   * <p>
+   * The module scope (only used by {@link #analyze(Script)}) is a FunctionScope
+   * with a null function.
+   */
+  public static final class FunctionScope {
+    private final FunctionScope parent;       // null for a top-level function (and for the module scope)
+    private final Stmt.FunctionDef function;  // null only for the module scope
+    private final LinkedHashSet<String> locals ;
+    private final LinkedHashSet<String> params;
+    private final LinkedHashSet<String> frees;
+    private final LinkedHashMap<String, Integer> assignmentCounts;
+    private final LinkedHashSet<String> loopAssigned;
+    private final ArrayList<FunctionScope> children;
+    // identity based, FunctionDef is a record so two identical defs are equals()
+    private final IdentityHashMap<Stmt.FunctionDef, FunctionScope> childByDef;
 
-    Stmt.FunctionDef function;
-
-    Scope(Scope parent, boolean isFunction) {
+    private FunctionScope(FunctionScope parent, Stmt.FunctionDef function) {
       this.parent = parent;
-      this.isFunction = isFunction;
+      this.function = function;
       this.locals = new LinkedHashSet<>();
       this.params = new LinkedHashSet<>();
       this.frees = new LinkedHashSet<>();
       this.assignmentCounts = new LinkedHashMap<>();
       this.loopAssigned = new LinkedHashSet<>();
       this.children = new ArrayList<>();
+      this.childByDef = new IdentityHashMap<>();
       super();
     }
 
-    void recordAssignment(String name, boolean inLoop) {
+    private void addParam(Stmt.FunctionDef.Param param) {
+      locals.add(param.name());
+      params.add(param.name());
+    }
+
+    private void recordAssignment(String name, boolean inLoop) {
       assignmentCounts.merge(name, 1, Integer::sum);
       if (inLoop) {
         loopAssigned.add(name);
       }
+    }
+
+    /** The locals (parameters first) and the free variables of this function. */
+    public FunctionAnalysis analysis() {
+      return new FunctionAnalysis(locals, frees);
+    }
+
+    /** The scope of a function directly nested in this one; no analysis is run. */
+    public FunctionScope inner(Stmt.FunctionDef def) {
+      var child = childByDef.get(def);
+      if (child == null) {
+        throw new IllegalArgumentException(
+            "'" + def.name() + "' is not directly nested in '" + functionName(this) + "'");
+      }
+      return child;
     }
   }
 
@@ -72,42 +102,83 @@ public final class ScopeAnalyzer {
   private ScopeAnalyzer() {}
 
   // ---------------------------------------------------------------------
-  // Entry point
+  // Entry points
   // ---------------------------------------------------------------------
 
-  public static Map<Stmt.FunctionDef, FunctionAnalysis> analyze(Script script) {
-    var functionScopes = new IdentityHashMap<Stmt.FunctionDef, Scope>();
-    var module = new Scope(null, /*isFunction=*/false);
+  /**
+   * Passes 1, 2 and 3 on a top-level function (a function whose enclosing scope is the module)
+   * and on all the functions nested in it.
+   * <p>
+   * The scopes are mutated by the passes, so this method should be called only once per
+   * {@code FunctionDef} node; calling it again builds a new, unrelated tree of scopes.
+   */
+  public static FunctionScope resolveTopLevel(Stmt.FunctionDef function) {
+    Objects.requireNonNull(function);
+    var scope = collectFunction(function, /*parent=*/null);   // pass 1
+    resolveStatements(function.body().stmts(), scope);                      // pass 2
+    checkEffectivelyFinal(scope);                                           // pass 3
+    return scope;
+  }
 
-    collectStatements(script.body().stmts(), module, /*inLoop=*/false, functionScopes);
-    resolveStatements(script.body().stmts(), module, functionScopes);
+  /**
+   * Pass 4 (definite assignment and capture-at-def) on this function only,
+   * the nested functions are checked when they are themselves checked.
+   * Works for top-level and inner functions, only reads the scope.
+   */
+  public static void checkDefiniteAssignment(FunctionScope scope) {
+    Objects.requireNonNull(scope);
+    checkDefiniteAssignment(scope.function.body().stmts(), scope);
+  }
+
+  /**
+   * Eager analysis of a whole script, all four passes on everything, module level included.
+   * Meant for tests; the interpreter should use the lazy entry points.
+   */
+  public static Map<Stmt.FunctionDef, FunctionAnalysis> analyze(Script script) {
+    Objects.requireNonNull(script);
+    var stmts = script.body().stmts();
+    var module = new FunctionScope(/*parent=*/null, /*function=*/null);  // never escapes
+    collectStatements(stmts, module, /*inLoop=*/false);
+    resolveStatements(stmts, module);
     checkEffectivelyFinal(module);
-    checkDefiniteAssignment(script.body().stmts(), module, functionScopes);
+    checkDefiniteAssignment(stmts, module);
 
     var result = new IdentityHashMap<Stmt.FunctionDef, FunctionAnalysis>();
-    for (var entry : functionScopes.entrySet()) {
-      var function = entry.getKey();
-      var scope = entry.getValue();
-      result.put(function, new FunctionAnalysis(scope.locals, scope.frees));
-    }
+    checkSubtree(module, result);
     return result;
+  }
+
+  private static void checkSubtree(FunctionScope scope, Map<Stmt.FunctionDef, FunctionAnalysis> result) {
+    for (var child : scope.children) {
+      checkDefiniteAssignment(child.function.body().stmts(), child);
+      result.put(child.function, child.analysis());
+      checkSubtree(child, result);
+    }
   }
 
   // ---------------------------------------------------------------------
   // Pass 1: locals / params / assignment counts / scope tree
   // ---------------------------------------------------------------------
 
-  private static void collectStatements(
-      List<Stmt> stmts, Scope scope, boolean inLoop,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
+  private static FunctionScope collectFunction(Stmt.FunctionDef function, FunctionScope parent) {
+    var scope = new FunctionScope(parent, function);
+    function.parameters().forEach(scope::addParam);
+    function.rest().ifPresent(scope::addParam);
+    if (parent != null) {
+      parent.children.add(scope);
+      parent.childByDef.put(function, scope);
+    }
+    collectStatements(function.body().stmts(), scope, /*inLoop=*/false);
+    return scope;
+  }
+
+  private static void collectStatements(List<Stmt> stmts, FunctionScope scope, boolean inLoop) {
     for (var stmt : stmts) {
-      collectStatement(stmt, scope, inLoop, functionScopes);
+      collectStatement(stmt, scope, inLoop);
     }
   }
 
-  private static void collectStatement(
-      Stmt stmt, Scope scope, boolean inLoop,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
+  private static void collectStatement(Stmt stmt, FunctionScope scope, boolean inLoop) {
     switch (stmt) {
       case Stmt.Assign(var targets, _, _, _) -> {
         for (var target : targets) {
@@ -117,41 +188,27 @@ public final class ScopeAnalyzer {
       case Stmt.AugAssign(var target, _, _, _, _) -> collectTargetBinding(target, scope, inLoop);
       case Stmt.Del _, Stmt.ExprStmt _, Stmt.Return _, Stmt.Break _, Stmt.Continue _ -> { }
       case Stmt.If(_, var body, var orElse, _, _) -> {
-        collectStatements(body.stmts(), scope, inLoop, functionScopes);
-        collectStatements(orElse.stmts(), scope, inLoop, functionScopes);
+        collectStatements(body.stmts(), scope, inLoop);
+        collectStatements(orElse.stmts(), scope, inLoop);
       }
       case Stmt.While(_, var body, var orElse, _, _) -> {
-        collectStatements(body.stmts(), scope, /*inLoop=*/true, functionScopes);
-        collectStatements(orElse.stmts(), scope, inLoop, functionScopes);
+        collectStatements(body.stmts(), scope, /*inLoop=*/true);
+        collectStatements(orElse.stmts(), scope, inLoop);
       }
       case Stmt.For(var target, _, var body, var orElse, _, _) -> {
         collectTargetBinding(target, scope, /*inLoop=*/true);
-        collectStatements(body.stmts(), scope, /*inLoop=*/true, functionScopes);
-        collectStatements(orElse.stmts(), scope, inLoop, functionScopes);
+        collectStatements(body.stmts(), scope, /*inLoop=*/true);
+        collectStatements(orElse.stmts(), scope, inLoop);
       }
       case Stmt.FunctionDef def -> {
         scope.locals.add(def.name());
         scope.recordAssignment(def.name(), inLoop);
-
-        var child = new Scope(scope, /*isFunction=*/true);
-        child.function  = def;
-        for (var param : def.parameters()) {
-          child.locals.add(param.name());
-          child.params.add(param.name());
-        }
-        def.rest().ifPresent(param -> {
-          child.locals.add(param.name());
-          child.params.add(param.name());
-        });
-
-        scope.children.add(child);
-        functionScopes.put(def, child);
-        collectStatements(def.body().stmts(), child, /*inLoop=*/false, functionScopes);
+        collectFunction(def, scope);
       }
     }
   }
 
-  private static void collectTargetBinding(Target target, Scope scope, boolean inLoop) {
+  private static void collectTargetBinding(Target target, FunctionScope scope, boolean inLoop) {
     switch (target) {
       case Target.NameTarget(String id, _, _) -> {
         scope.locals.add(id);
@@ -170,15 +227,13 @@ public final class ScopeAnalyzer {
   // Pass 2: free-variable resolution (closure chain)
   // ---------------------------------------------------------------------
 
-  private static void resolveStatements(
-      List<Stmt> stmts, Scope scope,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
-    for (var s : stmts) resolveStatement(s, scope, functionScopes);
+  private static void resolveStatements(List<Stmt> stmts, FunctionScope scope) {
+    for (var stmt : stmts) {
+      resolveStatement(stmt, scope);
+    }
   }
 
-  private static void resolveStatement(
-      Stmt stmt, Scope scope,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
+  private static void resolveStatement(Stmt stmt, FunctionScope scope) {
     switch (stmt) {
       case Stmt.ExprStmt(var expr, _, _) -> resolveExpr(expr, scope);
       case Stmt.Assign(var targets, var value, _, _) -> {
@@ -201,26 +256,25 @@ public final class ScopeAnalyzer {
       case Stmt.Break _, Stmt.Continue _ -> { }
       case Stmt.If(var test, var body, var orElse, _, _) -> {
         resolveExpr(test, scope);
-        resolveStatements(body.stmts(),   scope, functionScopes);
-        resolveStatements(orElse.stmts(), scope, functionScopes);
+        resolveStatements(body.stmts(), scope);
+        resolveStatements(orElse.stmts(), scope);
       }
       case Stmt.While(var test, var body, var orElse, _, _) -> {
         resolveExpr(test, scope);
-        resolveStatements(body.stmts(),   scope, functionScopes);
-        resolveStatements(orElse.stmts(), scope, functionScopes);
+        resolveStatements(body.stmts(), scope);
+        resolveStatements(orElse.stmts(), scope);
       }
       case Stmt.For(var target, var iter, var body, var orElse, _, _) -> {
         resolveTargetExprs(target, scope);
         resolveExpr(iter, scope);
-        resolveStatements(body.stmts(),   scope, functionScopes);
-        resolveStatements(orElse.stmts(), scope, functionScopes);
+        resolveStatements(body.stmts(), scope);
+        resolveStatements(orElse.stmts(), scope);
       }
-      case Stmt.FunctionDef def ->
-          resolveStatements(def.body().stmts(), functionScopes.get(def), functionScopes);
+      case Stmt.FunctionDef def -> resolveStatements(def.body().stmts(), scope.inner(def));
     }
   }
 
-  private static void resolveTargetExprs(Target target, Scope scope) {
+  private static void resolveTargetExprs(Target target, FunctionScope scope) {
     switch (target) {
       case Target.NameTarget _ -> { }
       case Target.SubscriptTarget(var value, var index, _, _) -> {
@@ -235,7 +289,7 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static void resolveExpr(Expr expr, Scope scope) {
+  private static void resolveExpr(Expr expr, FunctionScope scope) {
     switch (expr) {
       case Expr.Name(var id, _, _) -> resolveName(id, scope);
       case Expr.Literal _, Expr.NoneLiteral _ -> { }
@@ -285,7 +339,7 @@ public final class ScopeAnalyzer {
         resolveExpr(upper, scope);
         resolveExpr(step, scope);
       }
-      case Expr.ListDisplay(var elements, _, _)  -> {
+      case Expr.ListDisplay(var elements, _, _) -> {
         for (var element : elements) {
           resolveExpr(element, scope);
         }
@@ -304,7 +358,7 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static void resolveName(String name, Scope scope) {
+  private static void resolveName(String name, FunctionScope scope) {
     if (scope.locals.contains(name)) {
       return;
     }
@@ -313,7 +367,7 @@ public final class ScopeAnalyzer {
       if (!parent.locals.contains(name)) {
         continue;
       }
-      if (parent.isFunction) {
+      if (parent.function != null) {  // a function scope, module names are globals
         for (var p = scope; p != parent; p = p.parent) {
           p.frees.add(name);
         }
@@ -326,8 +380,8 @@ public final class ScopeAnalyzer {
   // Pass 3: effectively-final check
   // ---------------------------------------------------------------------
 
-  private static void checkEffectivelyFinal(Scope scope) {
-    if (scope.isFunction) {  // optimization
+  private static void checkEffectivelyFinal(FunctionScope scope) {
+    if (scope.function != null) {  // optimization: module variables are globals
       for (var name : scope.locals) {
         var capturing = findCapturingChild(scope, name);
         if (capturing == null) {
@@ -356,7 +410,7 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static Scope findCapturingChild(Scope scope, String name) {
+  private static FunctionScope findCapturingChild(FunctionScope scope, String name) {
     for (var child : scope.children) {
       if (child.frees.contains(name)) {
         return child;
@@ -365,7 +419,7 @@ public final class ScopeAnalyzer {
     return null;
   }
 
-  private static String functionName(Scope scope) {
+  private static String functionName(FunctionScope scope) {
     return scope.function == null ? "<module>" : scope.function.name();
   }
 
@@ -373,20 +427,16 @@ public final class ScopeAnalyzer {
   // Pass 4: definite assignment (flow-sensitive) + capture-at-def
   // ---------------------------------------------------------------------
 
-  private static void checkDefiniteAssignment(
-      List<Stmt> stmts, Scope scope,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes) {
+  private static void checkDefiniteAssignment(List<Stmt> stmts, FunctionScope scope) {
     var assigned = new LinkedHashSet<>(scope.params);
-    checkStmts(stmts, scope, assigned, functionScopes, /*loop=*/null);
+    checkStmts(stmts, scope, assigned, /*loop=*/null);
   }
 
   private static Optional<Set<String>> checkStmts(
-      List<Stmt> stmts, Scope scope, Set<String> assigned,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes,
-      FlowContext loop) {
+      List<Stmt> stmts, FunctionScope scope, Set<String> assigned, FlowContext loop) {
     var current = assigned;
     for (var stmt : stmts) {
-      var result = checkStmt(stmt, scope, current, functionScopes, loop);
+      var result = checkStmt(stmt, scope, current, loop);
       if (result.isEmpty()) {
         return Optional.empty();    // unreachable tail
       }
@@ -396,9 +446,7 @@ public final class ScopeAnalyzer {
   }
 
   private static Optional<Set<String>> checkStmt(
-      Stmt stmt, Scope scope, Set<String> assigned,
-      IdentityHashMap<Stmt.FunctionDef, Scope> functionScopes,
-      FlowContext loop) {
+      Stmt stmt, FunctionScope scope, Set<String> assigned, FlowContext loop) {
     switch (stmt) {
       case Stmt.ExprStmt(var expr, _, _) -> {
         checkExpr(expr, scope, assigned);
@@ -447,8 +495,8 @@ public final class ScopeAnalyzer {
       }
       case Stmt.If(var test, var body, var orElse, _, _) -> {
         checkExpr(test, scope, assigned);
-        var thenResult = checkStmts(body.stmts(),   scope, new LinkedHashSet<>(assigned), functionScopes, loop);
-        var elseResult = checkStmts(orElse.stmts(), scope, new LinkedHashSet<>(assigned), functionScopes, loop);
+        var thenResult = checkStmts(body.stmts(), scope, new LinkedHashSet<>(assigned), loop);
+        var elseResult = checkStmts(orElse.stmts(), scope, new LinkedHashSet<>(assigned), loop);
         if (thenResult.isPresent() && elseResult.isPresent()) {
           var merged = new LinkedHashSet<>(thenResult.get());
           merged.retainAll(elseResult.get());
@@ -459,10 +507,10 @@ public final class ScopeAnalyzer {
       case Stmt.While(var test, var body, var orElse, _, _) -> {
         checkExpr(test, scope, assigned);
         var bodyLoop = new FlowContext();
-        checkStmts(body.stmts(), scope, new LinkedHashSet<>(assigned), functionScopes, bodyLoop);
+        checkStmts(body.stmts(), scope, new LinkedHashSet<>(assigned), bodyLoop);
         var elseResult = orElse.stmts().isEmpty()
             ? Optional.<Set<String>>of(new LinkedHashSet<>(assigned))
-            : checkStmts(orElse.stmts(), scope, new LinkedHashSet<>(assigned), functionScopes, loop);
+            : checkStmts(orElse.stmts(), scope, new LinkedHashSet<>(assigned), loop);
         return loopExit(elseResult, bodyLoop);
       }
       case Stmt.For(var target, var iter, var body, var orElse, _, _) -> {
@@ -470,15 +518,14 @@ public final class ScopeAnalyzer {
         var bodyLoop = new FlowContext();
         var bodyIn = new LinkedHashSet<>(assigned);
         checkAndBindTarget(target, scope, bodyIn);
-        checkStmts(body.stmts(), scope, bodyIn, functionScopes, bodyLoop);
+        checkStmts(body.stmts(), scope, bodyIn, bodyLoop);
         var elseResult = orElse.stmts().isEmpty()
             ? Optional.<Set<String>>of(new LinkedHashSet<>(assigned))
-            : checkStmts(orElse.stmts(), scope, new LinkedHashSet<>(assigned), functionScopes, loop);
+            : checkStmts(orElse.stmts(), scope, new LinkedHashSet<>(assigned), loop);
         return loopExit(elseResult, bodyLoop);
       }
-
       case Stmt.FunctionDef s -> {
-        var child = functionScopes.get(s);
+        var child = scope.inner(s);
         for (var name : child.frees) {
           // Self-recursion: the def *is* the assignment that makes the name available.
           if (name.equals(s.name())) {
@@ -491,7 +538,7 @@ public final class ScopeAnalyzer {
                 s.line(), s.column());
           }
         }
-        checkDefiniteAssignment(s.body().stmts(), child, functionScopes);
+        // no recursion into the body: it is checked when `s` is itself called
         var out = new LinkedHashSet<>(assigned);
         out.add(s.name());
         return Optional.of(out);
@@ -506,12 +553,13 @@ public final class ScopeAnalyzer {
   private static Optional<Set<String>> loopExit(
       Optional<Set<String>> elseResult, FlowContext bodyLoop) {
     Set<String> normalExit = elseResult.orElse(null);
-    Set<String> breakExit  = null;
+    Set<String> breakExit = null;
     for (var bs : bodyLoop.breakStates) {
       if (breakExit == null) {
         breakExit = new LinkedHashSet<>(bs);
+      } else {
+        breakExit.retainAll(bs);
       }
-      else breakExit.retainAll(bs);
     }
     if (normalExit == null && breakExit == null) {
       return Optional.empty();
@@ -532,7 +580,7 @@ public final class ScopeAnalyzer {
    * (against the current state), then bind the name(s) it introduces. Processing
    * targets left-to-right makes {@code x = x[0] = []} valid.
    */
-  private static void checkAndBindTarget(Target target, Scope scope, Set<String> assigned) {
+  private static void checkAndBindTarget(Target target, FunctionScope scope, Set<String> assigned) {
     switch (target) {
       case Target.NameTarget(var id, _, _) -> assigned.add(id);
       case Target.SubscriptTarget(var value, var index, _, _) -> {
@@ -559,7 +607,7 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static void checkTargetExprs(Target target, Scope scope, Set<String> assigned) {
+  private static void checkTargetExprs(Target target, FunctionScope scope, Set<String> assigned) {
     switch (target) {
       case Target.NameTarget _ -> { }
       case Target.SubscriptTarget(var value, var index, _, _) -> {
@@ -574,7 +622,7 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static void checkExpr(Expr expr, Scope scope, Set<String> assigned) {
+  private static void checkExpr(Expr expr, FunctionScope scope, Set<String> assigned) {
     switch (expr) {
       case Expr.Name(var id, var line, var column) -> {
         if (scope.locals.contains(id) && !assigned.contains(id)) {
@@ -629,7 +677,7 @@ public final class ScopeAnalyzer {
         checkExpr(upper, scope, assigned);
         checkExpr(st, scope, assigned);
       }
-      case Expr.ListDisplay(var elements, _, _)  -> {
+      case Expr.ListDisplay(var elements, _, _) -> {
         for (var element : elements) {
           checkExpr(element, scope, assigned);
         }
@@ -648,7 +696,8 @@ public final class ScopeAnalyzer {
     }
   }
 
-  private static void requireAssigned(String name, Scope scope, Set<String> assigned, int line, int column) {
+  private static void requireAssigned(
+      String name, FunctionScope scope, Set<String> assigned, int line, int column) {
     if (scope.locals.contains(name) && !assigned.contains(name)) {
       throw new SemanticErrorException(
           "local variable '" + name + "' may be used before assignment", line, column);
