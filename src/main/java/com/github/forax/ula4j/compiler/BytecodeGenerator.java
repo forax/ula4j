@@ -116,7 +116,7 @@ public final class BytecodeGenerator {
     var cw = newClassWriter(internalName);
     var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "__main__", "()V", null, null);
     mv.visitCode();
-    var emitter = new Emitter(mv, ctx,  dictionary, null, null);
+    var emitter = new Emitter(mv, ctx,  dictionary, null, Set.of());
     emitter.block(script.body());
     mv.visitInsn(RETURN);
     mv.visitMaxs(0, 0);
@@ -141,7 +141,7 @@ public final class BytecodeGenerator {
     var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "body", descriptor, null, null);
     mv.visitCode();
 
-    var emitter = new Emitter(mv, ctx, dictionary, def, scope);
+    var emitter = new Emitter(mv, ctx, dictionary, def, scope.analysis().freeVariables());
     for (var capture : captures) {
       emitter.declare(capture);
     }
@@ -245,21 +245,20 @@ public final class BytecodeGenerator {
     private final ModuleContext ctx;
     private final Dictionary dictionary;
     private final Stmt.FunctionDef function;  // null in __main__
-    private final FunctionScope scope;        // null in __main__
     private final Set<String> frees;
-    private final Map<String, Integer> slots = new HashMap<>();
+    private final HashMap<String, Integer> slots;
     private int nextSlot;
     private int selfSlot = -1;
     private Label breakTarget;
     private Label continueTarget;
 
-    Emitter(MethodVisitor mv, ModuleContext ctx, Dictionary dictionary, Stmt.FunctionDef function, FunctionScope scope) {
+    Emitter(MethodVisitor mv, ModuleContext ctx, Dictionary dictionary, Stmt.FunctionDef function, Set<String> frees) {
       this.mv = mv;
       this.ctx = ctx;
       this.dictionary = dictionary;
       this.function = function;
-      this.scope = scope;
-      this.frees = scope == null ? Set.of() : scope.analysis().freeVariables();
+      this.frees = frees;
+      this.slots = new HashMap<>();
       super();
     }
 
