@@ -46,7 +46,7 @@ public final class RTTest {
   // ------------------------------------------------------------------ helpers
 
   private static MutableCallSite typeSwitchSite(Class<?>... labels) {
-    var site = RT.bsmTypeSwitch(LOOKUP, "typeSwitch", SWITCH_TYPE, labels);
+    var site = RT.bsmTypeSwitch(LOOKUP, "typeSwitch", SWITCH_TYPE, (Object[]) labels);
     return assertInstanceOf(MutableCallSite.class, site);
   }
 
