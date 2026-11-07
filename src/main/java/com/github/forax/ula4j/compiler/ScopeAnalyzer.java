@@ -91,9 +91,9 @@ public final class ScopeAnalyzer {
   }
 
   private static final class FlowContext {
-    final ArrayList<Set<String>> breakStates;
+    private final ArrayList<Set<String>> breakStates;
 
-    public FlowContext() {
+    FlowContext() {
       this.breakStates = new ArrayList<>();
       super();
     }
