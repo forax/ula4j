@@ -436,7 +436,9 @@ public final class ScopeAnalyzer {
         return Optional.empty();
       }
       case Stmt.Break(_, _) -> {
-        assert loop != null : "break outside loop should have been rejected by ASTBuilder";
+        if (loop == null) {
+          throw new AssertionError("break outside loop should have been rejected by ASTBuilder");
+        }
         loop.breakStates.add(new LinkedHashSet<>(assigned));
         return Optional.empty();
       }
