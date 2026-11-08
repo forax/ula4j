@@ -150,10 +150,10 @@ public final class RT {
   }
 
   public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
-    return FunctionSupport.getGlobal(lookup, type, globalName);
+    return FunctionSupport.getGlobal(lookup, globalName);
   }
 
   public static CallSite bsmSetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
-    return FunctionSupport.setGlobal(lookup, type, globalName);
+    return FunctionSupport.setGlobal(lookup, globalName);
   }
 }

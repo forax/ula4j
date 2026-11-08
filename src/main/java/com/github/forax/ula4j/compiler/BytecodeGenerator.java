@@ -137,7 +137,7 @@ public final class BytecodeGenerator {
 
     var cw = newClassWriter(functionClassName(def));
     var descriptor = bodyType(captures.size(), arity, varargs).toMethodDescriptorString();
-    var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "body", descriptor, null, null);
+    var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, def.name(), descriptor, null, null);
     mv.visitCode();
 
     var emitter = new Emitter(mv, ctx, dictionary, def, scope.analysis().freeVariables());
@@ -459,7 +459,7 @@ public final class BytecodeGenerator {
       for (var capture : captures) {
         loadName(capture);
       }
-      mv.visitInvokeDynamicInsn("def", "(" + O.repeat(captures.size()) + ")" + O, BSM_DEF, dictionary.register(def));
+      mv.visitInvokeDynamicInsn(def.name(), "(" + O.repeat(captures.size()) + ")" + O, BSM_DEF, dictionary.register(def));
       storeName(def.name());
     }
 
@@ -626,7 +626,8 @@ public final class BytecodeGenerator {
           for (var arg : c.args()) {
             expr(arg);
           }
-          mv.visitInvokeDynamicInsn("call", "(" + O.repeat(c.args().size() + 1) + ")" + O, BSM_CALL);
+          var callName = c.func() instanceof Expr.Name name ? name.id() : "call";
+          mv.visitInvokeDynamicInsn(callName, "(" + O.repeat(c.args().size() + 1) + ")" + O, BSM_CALL);
         }
         case Expr.MethodCall m -> throw unsupported("method call", m.line(), m.column());
         case Expr.Subscript s -> throw unsupported("subscript", s.line(), s.column());

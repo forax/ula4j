@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ModuleContext {
 
   /// A module-level name. `null` means unbound.
-  public static final class GlobalCell {
+  static final class GlobalCell {
     private final ConcurrentHashMap<String, Object> builtins;
     private final String name;
     private volatile Object value;
@@ -30,15 +30,15 @@ public final class ModuleContext {
       if (value != null) {
         return value;
       }
-      value = builtins.get(name);
-      if (value != null) {
-        return value;
+      var builtinValue = builtins.get(name);
+      if (builtinValue != null) {
+        return builtinValue;
       }
       throw new PyNameError("name '" + name + "' is not defined");
     }
 
-    public void set(Object newValue) {
-      value = Objects.requireNonNull(newValue);
+    public void set(Object value) {
+      this.value = Objects.requireNonNull(value);
     }
   }
 

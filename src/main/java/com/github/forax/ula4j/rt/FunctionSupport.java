@@ -6,7 +6,10 @@ import com.github.forax.ula4j.ast.Stmt;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.util.CheckClassAdapter;
 
+import java.io.PrintWriter;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
@@ -34,14 +37,14 @@ final class FunctionSupport {
 
   // ---- globals
 
-  static CallSite getGlobal(MethodHandles.Lookup lookup, MethodType type, String name) {
+  static CallSite getGlobal(MethodHandles.Lookup lookup, String name) {
     var cell = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
-    return new ConstantCallSite(CELL_GET.bindTo(cell).asType(type));
+    return new ConstantCallSite(CELL_GET.bindTo(cell));
   }
 
-  static CallSite setGlobal(MethodHandles.Lookup lookup, MethodType type, String name) {
+  static CallSite setGlobal(MethodHandles.Lookup lookup, String name) {
     var cell = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
-    return new ConstantCallSite(CELL_SET.bindTo(cell).asType(type));
+    return new ConstantCallSite(CELL_SET.bindTo(cell));
   }
 
   // ---- def
@@ -201,10 +204,10 @@ final class FunctionSupport {
       var adapted = adapt(function, entry, argc).asType(type());
 
       // 4. Install the inlining cache
-      if (depth >= MAX_DEPTH) {
+      /*if (depth >= MAX_DEPTH) {
         root.setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), Megamorphic.MEGAMORPHIC.bindTo(type())));
         return adapted;
-      }
+      }*/
       var test = SAME_COMPILED_ENTRY.bindTo(compiledEntry);
       var fallback = new FunctionCallSite(type(), context, root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
@@ -230,13 +233,17 @@ final class FunctionSupport {
 
       var dictionary = new Dictionary();
       var bytes = BytecodeGenerator.generateFunction(ctx, dictionary, def, scope);
+
+      //DEBUG
+      //CheckClassAdapter.verify(new ClassReader(bytes), true, new PrintWriter(System.err));
+
       var className = BytecodeGenerator.functionClassName(def).replace('/', '.');
       var loader = new ModuleClassLoader(ctx, dictionary);
       var clazz = loader.define(className, bytes);
       var captureCount = BytecodeGenerator.captureNames(def, scope.analysis()).size();
       var type = BytecodeGenerator.bodyType(captureCount, def.parameters().size(), def.rest().isPresent());
       try {
-        return LOOKUP.findStatic(clazz, "body", type).asFixedArity();
+        return LOOKUP.findStatic(clazz, def.name(), type).asFixedArity();
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
