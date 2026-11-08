@@ -142,11 +142,11 @@ public final class RT {
   }
 
   public static CallSite bsmDef(MethodHandles.Lookup lookup, String name, MethodType type, int astIndex) {
-    return FunctionSupport.def(lookup, type, astIndex);
+    return FunctionSupport.DefCallSite.def(lookup, type, astIndex);
   }
 
   public static CallSite bsmCall(MethodHandles.Lookup lookup, String name, MethodType type) {
-    return new FunctionCallSite(type);
+    return new FunctionSupport.FunctionCallSite(type);
   }
 
   public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
