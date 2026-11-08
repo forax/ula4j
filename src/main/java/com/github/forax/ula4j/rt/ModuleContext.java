@@ -1,18 +1,13 @@
 package com.github.forax.ula4j.rt;
 
-import com.github.forax.ula4j.ast.Script;
 import com.github.forax.ula4j.ast.Stmt;
 import com.github.forax.ula4j.compiler.ScopeAnalyzer;
 import com.github.forax.ula4j.compiler.ScopeAnalyzer.FunctionScope;
 import com.github.forax.ula4j.rt.error.PyNameError;
 
-import java.lang.invoke.MethodHandle;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 
 /// Everything a module owns: global cells, builtins, the registered functions and their compiled bodies.
 /// Generated code reaches it through `((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context()`.
@@ -20,11 +15,11 @@ public final class ModuleContext {
 
   /// A module-level name. `null` means unbound.
   public static final class GlobalCell {
-    private final HashMap<String, Object> builtins;
+    private final ConcurrentHashMap<String, Object> builtins;
     private final String name;
-    private Object value;
+    private volatile Object value;
 
-    private GlobalCell(HashMap<String, Object> builtins, String name) {
+    private GlobalCell(ConcurrentHashMap<String, Object> builtins, String name) {
       this.builtins = builtins;
       this.name = name;
       super();
@@ -47,13 +42,17 @@ public final class ModuleContext {
     }
   }
 
-  private final IdentityHashMap<Stmt.FunctionDef, FunctionScope> scopes = new IdentityHashMap<>();
+  // can only be get()/put() under a synchronized
+  private final IdentityHashMap<Stmt.FunctionDef, FunctionScope> scopes;
 
-  private final HashMap<String, GlobalCell> globals = new HashMap<>();
-  private final HashMap<String, Object> builtins = new HashMap<>();
+  private final ConcurrentHashMap<String, GlobalCell> globals;
+  private final ConcurrentHashMap<String, Object> builtins;
 
   public ModuleContext() {
-
+    scopes = new IdentityHashMap<>();
+    globals = new ConcurrentHashMap<>();
+    builtins = new ConcurrentHashMap<>();
+    super();
   }
 
   // ---- globals
@@ -83,11 +82,16 @@ public final class ModuleContext {
   public void registerScope(Stmt.FunctionDef def, FunctionScope scope) {
     Objects.requireNonNull(def);
     Objects.requireNonNull(scope);
-    scopes.put(def, scope);
+    synchronized (scopes) {
+      scopes.put(def, scope);
+    }
   }
 
   public FunctionScope scopeOf(Stmt.FunctionDef def) {
-    var scope = scopes.get(def);
+    FunctionScope scope;
+    synchronized (scopes) {
+      scope = scopes.get(def);
+    }
     if (scope == null) {
       throw new IllegalStateException("no scope for '" + def.name() + "': its enclosing function is not compiled");
     }
@@ -96,11 +100,13 @@ public final class ModuleContext {
 
   /// The scope of a function, resolving it now if it is a module-level function.
   FunctionScope scopeFor(Stmt.FunctionDef def) {
-    var scope = scopes.get(def);
-    if (scope == null) {
-      scope = ScopeAnalyzer.resolveTopLevel(def);  // passes 1-3 for the function and everything nested in it
-      scopes.put(def, scope);
+    synchronized (scopes) {
+      var scope = scopes.get(def);
+      if (scope == null) {
+        scope = ScopeAnalyzer.resolveTopLevel(def);  // passes 1-3 for the function and everything nested in it
+        scopes.put(def, scope);
+      }
+      return scope;
     }
-    return scope;
   }
 }
