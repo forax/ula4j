@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.lang.reflect.UndeclaredThrowableException;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,19 +44,25 @@ public final class FunctionSupportTest {
 
   // ------------------------------------------------------------------------------------------ helpers
 
-  private static ModuleContext run(String source) throws Throwable {
+  private static ModuleContext run(String source) {
     return Compiler.run(source);
   }
 
-  private static Object eval(String source, String global) throws Throwable {
+  private static Object eval(String source, String global) {
     return Compiler.run(source).getGlobal(global);
   }
 
   /// Compiles and runs a script in an existing module: its globals and the call sites inside
   /// the already defined functions are kept.
-  private static void runIn(ModuleContext ctx, String source) throws Throwable {
+  private static void runIn(ModuleContext ctx, String source) {
     var main = Compiler.compile(ctx, ASTBuilder.createScript(source));
-    main.invokeExact();
+    try {
+      main.invokeExact();
+    } catch (RuntimeException | Error e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new UndeclaredThrowableException(e);
+    }
   }
 
   private static PyTuple tuple(Object... items) {
@@ -107,7 +114,7 @@ public final class FunctionSupportTest {
     return builder.toString();
   }
 
-  private static void checkDistinctCallees(int n, boolean warm) throws Throwable {
+  private static void checkDistinctCallees(int n, boolean warm) {
     var module = run(distinctCallees(n, warm));
     for (var round = 0; round < 3; round++) {
       for (var i = 0; i < n; i++) {
@@ -153,7 +160,7 @@ public final class FunctionSupportTest {
     return builder.toString();
   }
 
-  private static void checkPicker(int n, int iterations, boolean warm) throws Throwable {
+  private static void checkPicker(int n, int iterations, boolean warm) {
     var total = 0L;
     for (var i = 0; i < iterations; i++) {
       total += 1 + 10L * (i % n);
@@ -188,7 +195,7 @@ public final class FunctionSupportTest {
     return builder.toString();
   }
 
-  private static void checkDistinctClosures(int n, boolean warm) throws Throwable {
+  private static void checkDistinctClosures(int n, boolean warm) {
     var module = run(distinctClosures(n, warm));
     for (var i = 0; i < n; i++) {
       assertGlobal(module, "r" + i, 100L + 1000L * i + i);
@@ -282,7 +289,7 @@ public final class FunctionSupportTest {
     return builder.toString();
   }
 
-  private static void checkKinds(List<Case> cases, boolean warm) throws Throwable {
+  private static void checkKinds(List<Case> cases, boolean warm) {
     var module = run(kindsSource(cases, warm));
     for (var round = 0; round < 3; round++) {
       for (var c : cases) {
@@ -293,7 +300,7 @@ public final class FunctionSupportTest {
 
   /// Eight distinct functions, already compiled and called through `apply`, so that the site of `apply`
   /// is megamorphic. Every `f<i>` returns `x + i`.
-  private static ModuleContext megamorphicSession() throws Throwable {
+  private static ModuleContext megamorphicSession() {
     var ctx = new ModuleContext();
     var builder = new StringBuilder();
     for (var i = 0; i < 8; i++) {
@@ -322,7 +329,7 @@ public final class FunctionSupportTest {
   public final class Definition {
 
     @Test
-    public void functionValueExposesItsSignature() throws Throwable {
+    public void functionValueExposesItsSignature() {
       var module = run("""
           def f(a, b):
               return a
@@ -336,7 +343,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void restFunctionValueExposesItsSignature() throws Throwable {
+    public void restFunctionValueExposesItsSignature() {
       var module = run("""
           def f(a, *r):
               return a
@@ -348,7 +355,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void functionWithOnlyARestParameter() throws Throwable {
+    public void functionWithOnlyARestParameter() {
       var module = run("""
           def f(*r):
               return r
@@ -360,7 +367,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void definingAFunctionDoesNotRunItsBody() throws Throwable {
+    public void definingAFunctionDoesNotRunItsBody() {
       var module = run("""
           def boom():
               return 1 // 0
@@ -372,7 +379,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void everyExecutionOfANestedDefYieldsANewFunctionValue() throws Throwable {
+    public void everyExecutionOfANestedDefYieldsANewFunctionValue() {
       // This may change in the future
       var module = run("""
           def make():
@@ -388,7 +395,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void nestedFunctionsWithTheSameNameInDifferentFunctionsDoNotClash() throws Throwable {
+    public void nestedFunctionsWithTheSameNameInDifferentFunctionsDoNotClash() {
       var source = """
           def a():
               def inner():
@@ -404,7 +411,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void defInBothBranchesOfAnIf() throws Throwable {
+    public void defInBothBranchesOfAnIf() {
       var module = run("""
           def pick(c):
               if c:
@@ -422,7 +429,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void defInsideAModuleLevelLoop() throws Throwable {
+    public void defInsideAModuleLevelLoop() {
       var source = """
           total = 0
           for c in 'abc':
@@ -434,7 +441,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void aFunctionValueCanBeAliasedAndPassedAround() throws Throwable {
+    public void aFunctionValueCanBeAliasedAndPassedAround() {
       var source = """
           def f(x):
               return x + 1
@@ -454,7 +461,7 @@ public final class FunctionSupportTest {
   public final class MonomorphicCalls {
 
     @Test
-    public void repeatedCallsThroughOneSite() throws Throwable {
+    public void repeatedCallsThroughOneSite() {
       var source = """
           def inc(x):
               return x + 1
@@ -468,7 +475,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void longLoopThroughOneSite() throws Throwable {
+    public void longLoopThroughOneSite() {
       var source = """
           def inc(x):
               return x + 1
@@ -485,7 +492,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "arity {0}")
     @ValueSource(ints = {0, 1, 2, 3, 4, 5, 7, 8, 16, 40, 100})
-    public void fixedArity(int n) throws Throwable {
+    public void fixedArity(int n) {
       var params = csv(n, i -> "p" + i);
       var body = n == 0 ? "0" : csv(n, i -> "p" + i + " * " + (i + 1)).replace(", ", " + ");
       var args = csv(n, i -> String.valueOf(i + 1));
@@ -494,7 +501,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void calleeIsTheResultOfAnotherCall() throws Throwable {
+    public void calleeIsTheResultOfAnotherCall() {
       var source = """
           def adder(k):
               def add(x):
@@ -506,7 +513,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void callsAsArguments() throws Throwable {
+    public void callsAsArguments() {
       var source = """
           def f(x):
               return x + 1
@@ -516,7 +523,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void calleeChosenByAConditionalExpression() throws Throwable {
+    public void calleeChosenByAConditionalExpression() {
       var source = """
           def inc(x):
               return x + 1
@@ -531,7 +538,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void functionWithoutReturnYieldsNone() throws Throwable {
+    public void functionWithoutReturnYieldsNone() {
       assertSame(PyNone.INSTANCE, eval("""
           def f():
               pass
@@ -540,7 +547,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void parameterShadowsAGlobalFunction() throws Throwable {
+    public void parameterShadowsAGlobalFunction() {
       var source = """
           def f():
               return 1
@@ -554,7 +561,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void functionCanCallItsArgumentTwice() throws Throwable {
+    public void functionCanCallItsArgumentTwice() {
       var source = """
           def twice(fn, x):
               return fn(fn(x))
@@ -566,7 +573,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void foldWithOneCallee() throws Throwable {
+    public void foldWithOneCallee() {
       var source = """
           def fold(fn, s, acc):
               for c in s:
@@ -580,7 +587,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void recursion() throws Throwable {
+    public void recursion() {
       var source = """
           def fib(n):
               if n < 2:
@@ -592,7 +599,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void mutualRecursionThroughGlobals() throws Throwable {
+    public void mutualRecursionThroughGlobals() {
       var module = run("""
           def is_even(n):
               if n == 0:
@@ -612,7 +619,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void recursionPassingExtraArgumentsToARestParameter() throws Throwable {
+    public void recursionPassingExtraArgumentsToARestParameter() {
       var source = """
           def depth(n, *r):
               if n == 0:
@@ -631,30 +638,30 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} distinct callees, warm")
     @ValueSource(ints = {1, 2, 3, 4})
-    public void warmDistinctCallees(int n) throws Throwable {
+    public void warmDistinctCallees(int n) {
       checkDistinctCallees(n, true);
     }
 
     @ParameterizedTest(name = "{0} distinct callees, cold")
     @ValueSource(ints = {1, 2, 3, 4})
-    public void coldDistinctCallees(int n) throws Throwable {
+    public void coldDistinctCallees(int n) {
       checkDistinctCallees(n, false);
     }
 
     @ParameterizedTest(name = "{0} callees mixed in a loop, warm")
     @ValueSource(ints = {1, 2, 3, 4})
-    public void warmPicker(int n) throws Throwable {
+    public void warmPicker(int n) {
       checkPicker(n, 400, true);
     }
 
     @ParameterizedTest(name = "{0} callees mixed in a loop, cold")
     @ValueSource(ints = {1, 2, 3, 4})
-    public void coldPicker(int n) throws Throwable {
+    public void coldPicker(int n) {
       checkPicker(n, 400, false);
     }
 
     @Test
-    public void foldWithSeveralCallees() throws Throwable {
+    public void foldWithSeveralCallees() {
       var source = """
           def fold(fn, s, acc):
               for c in s:
@@ -679,7 +686,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void aCalleeSeenAgainAfterOthersStillWorks() throws Throwable {
+    public void aCalleeSeenAgainAfterOthersStillWorks() {
       var module = run("""
           def a(x):
               return x + 1
@@ -705,17 +712,17 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void plainAndRestFunctionsAtOneSite() throws Throwable {
+    public void plainAndRestFunctionsAtOneSite() {
       checkKinds(List.of(PLAIN, REST0, REST1, REST2), false);
     }
 
     @Test
-    public void plainAndRestFunctionsAtOneSiteWarm() throws Throwable {
+    public void plainAndRestFunctionsAtOneSiteWarm() {
       checkKinds(List.of(PLAIN, REST0, REST1, REST2), true);
     }
 
     @Test
-    public void distinctClosuresWithDistinctCodes() throws Throwable {
+    public void distinctClosuresWithDistinctCodes() {
       checkDistinctClosures(4, true);
       checkDistinctClosures(4, false);
     }
@@ -729,60 +736,60 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} distinct callees, warm")
     @ValueSource(ints = {5, 6, 7, 8, 12, 16, 32})
-    public void warmDistinctCallees(int n) throws Throwable {
+    public void warmDistinctCallees(int n) {
       checkDistinctCallees(n, true);
     }
 
     /// The first call of most of these functions is made by the megamorphic site itself.
     @ParameterizedTest(name = "{0} distinct callees, cold")
     @ValueSource(ints = {5, 6, 7, 8, 12, 16, 32})
-    public void coldDistinctCallees(int n) throws Throwable {
+    public void coldDistinctCallees(int n) {
       checkDistinctCallees(n, false);
     }
 
     @ParameterizedTest(name = "{0} callees mixed in a loop, warm")
     @ValueSource(ints = {5, 6, 8, 12})
-    public void warmPicker(int n) throws Throwable {
+    public void warmPicker(int n) {
       checkPicker(n, 600, true);
     }
 
     @ParameterizedTest(name = "{0} callees mixed in a loop, cold")
     @ValueSource(ints = {5, 6, 8, 12})
-    public void coldPicker(int n) throws Throwable {
+    public void coldPicker(int n) {
       checkPicker(n, 600, false);
     }
 
     @ParameterizedTest(name = "{0} distinct closures, warm")
     @ValueSource(ints = {5, 6, 9, 16})
-    public void warmDistinctClosures(int n) throws Throwable {
+    public void warmDistinctClosures(int n) {
       checkDistinctClosures(n, true);
     }
 
     @ParameterizedTest(name = "{0} distinct closures, cold")
     @ValueSource(ints = {5, 6, 9, 16})
-    public void coldDistinctClosures(int n) throws Throwable {
+    public void coldDistinctClosures(int n) {
       checkDistinctClosures(n, false);
     }
 
     @Test
-    public void sevenKindsOfPlainAndRestFunctionsWarm() throws Throwable {
+    public void sevenKindsOfPlainAndRestFunctionsWarm() {
       checkKinds(List.of(PLAIN, REVERSED, REST0, REST1, REST2, REST3, HEAD3), true);
     }
 
     @Test
-    public void sevenKindsOfPlainAndRestFunctionsCold() throws Throwable {
+    public void sevenKindsOfPlainAndRestFunctionsCold() {
       checkKinds(List.of(PLAIN, REVERSED, REST0, REST1, REST2, REST3, HEAD3), false);
     }
 
     @Test
-    public void megamorphicSiteKeepsWorkingForEveryCalleeAfterwards() throws Throwable {
+    public void megamorphicSiteKeepsWorkingForEveryCalleeAfterwards() {
       var ctx = megamorphicSession();
       runIn(ctx, "q = apply(f7, 1) + apply(f0, 1) + apply(f4, 1) + apply(f2, 1)\n");
       assertGlobal(ctx, "q", (1L + 7) + (1L + 0) + (1L + 4) + (1L + 2));
     }
 
     @Test
-    public void megamorphicSiteStillReportsWrongArity() throws Throwable {
+    public void megamorphicSiteStillReportsWrongArity() {
       var ctx = megamorphicSession();
       var e = assertThrows(PyTypeError.class,
           () -> runIn(ctx, """
@@ -799,7 +806,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void megamorphicSiteStillReportsNonCallables() throws Throwable {
+    public void megamorphicSiteStillReportsNonCallables() {
       var ctx = megamorphicSession();
       var e = assertThrows(PyTypeError.class, () -> runIn(ctx, "x = apply(5, 1)\n"));
       assertEquals("'int' object is not callable", e.getMessage());
@@ -811,7 +818,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void megamorphicSiteWithRestFunctionAndTooFewArguments() throws Throwable {
+    public void megamorphicSiteWithRestFunctionAndTooFewArguments() {
       var ctx = megamorphicSession();
       var e = assertThrows(PyTypeError.class,
           () -> runIn(ctx, """
@@ -823,7 +830,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void bodyExceptionsPropagateFromAMegamorphicSite() throws Throwable {
+    public void bodyExceptionsPropagateFromAMegamorphicSite() {
       var ctx = megamorphicSession();
       runIn(ctx, """
           def inv(x):
@@ -846,7 +853,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} extra arguments")
     @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6, 10, 50})
-    public void onlyARestParameter(int n) throws Throwable {
+    public void onlyARestParameter(int n) {
       var source = "def f(*r):\n    return r\nt = f(" + csv(n, i -> String.valueOf(i + 1)) + ")\n";
       var expected = new Object[n];
       for (var i = 0; i < n; i++) {
@@ -857,7 +864,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} extra arguments")
     @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6, 9, 30})
-    public void fixedParametersThenARestParameter(int extras) throws Throwable {
+    public void fixedParametersThenARestParameter(int extras) {
       var args = csv(2 + extras, i -> String.valueOf(i + 1));
       var source = """
           def f(a, b, *r):
@@ -876,7 +883,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void restTupleCanBeIterated() throws Throwable {
+    public void restTupleCanBeIterated() {
       var module = run("""
           def total(*r):
               s = 0
@@ -893,7 +900,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void sameFunctionCalledFromSitesWithDifferentArgumentCounts() throws Throwable {
+    public void sameFunctionCalledFromSitesWithDifferentArgumentCounts() {
       var module = run("""
           def f(a, *r):
               return r
@@ -913,7 +920,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void restTupleIsNewForEveryCall() throws Throwable {
+    public void restTupleIsNewForEveryCall() {
       var module = run("""
           def f(*r):
               return r
@@ -927,7 +934,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void restValuesKeepTheirTypes() throws Throwable {
+    public void restValuesKeepTheirTypes() {
       var module = run("""
           def f(*r):
               return r
@@ -960,7 +967,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void restFunctionAndPlainFunctionAtOneSiteWithMatchingArity() throws Throwable {
+    public void restFunctionAndPlainFunctionAtOneSiteWithMatchingArity() {
       var module = run("""
           def apply2(fn, a, b):
               return fn(a, b)
@@ -984,7 +991,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void restParameterIsCapturedByANestedFunction() throws Throwable {
+    public void restParameterIsCapturedByANestedFunction() {
       var source = """
           def keep(*r):
               def get():
@@ -999,7 +1006,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void nestedFunctionsWithRestParametersAtEveryLevel() throws Throwable {
+    public void nestedFunctionsWithRestParametersAtEveryLevel() {
       var source = """
           def outer(a, *ra):
               def mid(b, *rb):
@@ -1020,7 +1027,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} captured values")
     @ValueSource(ints = {0, 1, 2, 3, 4, 5, 8, 20, 60, 120})
-    public void manyCapturedValues(int k) throws Throwable {
+    public void manyCapturedValues(int k) {
       var params = csv(k, i -> "c" + i);
       var sum = "x" + IntStream.range(0, k).mapToObj(i -> " + c" + i).collect(Collectors.joining());
       var args = csv(k, i -> String.valueOf(i + 1));
@@ -1033,7 +1040,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void capturedValuesKeepTheirTypes() throws Throwable {
+    public void capturedValuesKeepTheirTypes() {
       var module = run("""
           def box(v):
               def get():
@@ -1055,7 +1062,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void capturedParameterAndCapturedLocalTogether() throws Throwable {
+    public void capturedParameterAndCapturedLocalTogether() {
       var source = """
           def make(base):
               extra = base * 2
@@ -1069,7 +1076,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void captureTravelsThroughSeveralLevels() throws Throwable {
+    public void captureTravelsThroughSeveralLevels() {
       var source = """
           def outer(a):
               def mid(b):
@@ -1083,7 +1090,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closuresOfOneDefKeepIndependentCapturesAtSeparateSites() throws Throwable {
+    public void closuresOfOneDefKeepIndependentCapturesAtSeparateSites() {
       var module = run("""
           def make(k):
               def add(x):
@@ -1103,7 +1110,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closureReceivedAsArgumentIsCalledAtAnInnerSite() throws Throwable {
+    public void closureReceivedAsArgumentIsCalledAtAnInnerSite() {
       var source = """
           def apply_n(fn, n, x):
               i = 0
@@ -1121,7 +1128,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closuresCapturingFunctionsAreComposed() throws Throwable {
+    public void closuresCapturingFunctionsAreComposed() {
       var module = run("""
           def inc(x):
               return x + 1
@@ -1141,7 +1148,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closureWithRestAndCapture() throws Throwable {
+    public void closureWithRestAndCapture() {
       var module = run("""
           def make(k):
               def total(*r):
@@ -1162,7 +1169,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void capturedSelfRecursionInASingleClosure() throws Throwable {
+    public void capturedSelfRecursionInASingleClosure() {
       var source = """
           def make(base):
               def fact(n):
@@ -1176,7 +1183,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closureInsideAFunctionCalledManyTimes() throws Throwable {
+    public void closureInsideAFunctionCalledManyTimes() {
       var source = """
           def make(k):
               def add(x):
@@ -1205,7 +1212,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} closures of one def")
     @ValueSource(ints = {2, 3, 4, 5, 6, 9})
-    public void closuresOfOneDefAtOneSite(int n) throws Throwable {
+    public void closuresOfOneDefAtOneSite(int n) {
       var module = run(sameCode(n));
       for (var round = 0; round < 3; round++) {
         for (var i = 0; i < n; i++) {
@@ -1215,7 +1222,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void twoClosuresAlternatingInALoop() throws Throwable {
+    public void twoClosuresAlternatingInALoop() {
       var source = """
           def make(k):
               def add(x):
@@ -1238,7 +1245,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void twoDefsWithTwoClosuresEach() throws Throwable {
+    public void twoDefsWithTwoClosuresEach() {
       var module = run("""
           def make1(k):
               def add(x):
@@ -1270,7 +1277,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closureCreatedAndCalledAtTheSameSiteInALoop() throws Throwable {
+    public void closureCreatedAndCalledAtTheSameSiteInALoop() {
       var source = """
           def make(k):
               def add(x):
@@ -1286,7 +1293,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closureCreatedAndCalledInsideAFunction() throws Throwable {
+    public void closureCreatedAndCalledInsideAFunction() {
       var source = """
           def make(k):
               def add(x):
@@ -1305,7 +1312,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void applyNWithTwoClosures() throws Throwable {
+    public void applyNWithTwoClosures() {
       var module = run("""
           def apply_n(fn, n, x):
               i = 0
@@ -1327,7 +1334,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void applyNWithTwoClosures2() throws Throwable {
+    public void applyNWithTwoClosures2() {
       var module = run("""
           def apply_n(fn, n, x):
               i = 0
@@ -1349,7 +1356,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void recursiveClosuresWithDifferentCaptures() throws Throwable {
+    public void recursiveClosuresWithDifferentCaptures() {
       var module = run("""
           def make(base):
               def fact(n):
@@ -1368,7 +1375,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void composedClosuresOfOneDef() throws Throwable {
+    public void composedClosuresOfOneDef() {
       var module = run("""
           def inc(x):
               return x + 1
@@ -1394,7 +1401,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void curriedClosures() throws Throwable {
+    public void curriedClosures() {
       var module = run("""
           def curry(a):
               def f1(b):
@@ -1415,7 +1422,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void closuresWithRestParameterAtOneSite() throws Throwable {
+    public void closuresWithRestParameterAtOneSite() {
       var module = run("""
           def make(k):
               def total(*r):
@@ -1444,7 +1451,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} successive definitions, warm")
     @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 10})
-    public void warmRebinding(int n) throws Throwable {
+    public void warmRebinding(int n) {
       var module = run(rebinding(n, true));
       for (var k = 0; k < n; k++) {
         assertGlobal(module, "r" + k, 100L + k);
@@ -1453,7 +1460,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} successive definitions, cold")
     @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 10})
-    public void coldRebinding(int n) throws Throwable {
+    public void coldRebinding(int n) {
       var module = run(rebinding(n, false));
       for (var k = 0; k < n; k++) {
         assertGlobal(module, "r" + k, 100L + k);
@@ -1461,7 +1468,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void globalIsLookedUpAtCallTime() throws Throwable {
+    public void globalIsLookedUpAtCallTime() {
       var module = run("""
           def a():
               return b()
@@ -1473,7 +1480,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void globalReboundToANonFunctionAndBack() throws Throwable {
+    public void globalReboundToANonFunctionAndBack() {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def f(x):
@@ -1496,7 +1503,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void aliasKeepsTheOldFunctionAfterRebinding() throws Throwable {
+    public void aliasKeepsTheOldFunctionAfterRebinding() {
       var module = run("""
           def f():
               return 1
@@ -1519,7 +1526,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} function values, module level")
     @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 10, 30})
-    public void moduleLevelDefInALoop(int n) throws Throwable {
+    public void moduleLevelDefInALoop(int n) {
       var source = APPLY + """
           total = 0
           for c in '""" + "a".repeat(n) + """
@@ -1533,7 +1540,7 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} function values, inside a function")
     @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 10, 30})
-    public void defInALoopInsideAFunction(int n) throws Throwable {
+    public void defInALoopInsideAFunction(int n) {
       var source = APPLY + """
           def run():
               total = 0
@@ -1549,7 +1556,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void functionValuesFromOneDefAreCalledThroughTheSameSiteSeveralTimes() throws Throwable {
+    public void functionValuesFromOneDefAreCalledThroughTheSameSiteSeveralTimes() {
       var source = APPLY + """
           def make():
               def f(x):
@@ -1564,7 +1571,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void manyFunctionValuesFromOneDefWithoutCaptures() throws Throwable {
+    public void manyFunctionValuesFromOneDefWithoutCaptures() {
       var source = APPLY + """
           def make():
               def f(x):
@@ -1679,7 +1686,7 @@ public final class FunctionSupportTest {
   public final class CallSiteRecovery {
 
     @Test
-    public void siteStaysUsableAfterTheCalleeRaised() throws Throwable {
+    public void siteStaysUsableAfterTheCalleeRaised() {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def inv(x):
@@ -1694,7 +1701,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void wrongArityIsReportedEveryTimeAndDoesNotBreakTheSite() throws Throwable {
+    public void wrongArityIsReportedEveryTimeAndDoesNotBreakTheSite() {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def one(x):
@@ -1713,7 +1720,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void nonCallableThenCallableAtTheSameSite() throws Throwable {
+    public void nonCallableThenCallableAtTheSameSite() {
       var ctx = new ModuleContext();
       runIn(ctx, "def one(x):\n    return x\n" + APPLY + "a = apply(one, 1)\n");
       var e = assertThrows(PyTypeError.class, () -> runIn(ctx, "x = apply(None, 1)\n"));
@@ -1723,7 +1730,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void wrongArityAfterTheSiteBecamePolymorphic() throws Throwable {
+    public void wrongArityAfterTheSiteBecamePolymorphic() {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def f0(x):
@@ -1744,7 +1751,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void exceptionInTheBodyOfOneCalleeDoesNotAffectTheOthers() throws Throwable {
+    public void exceptionInTheBodyOfOneCalleeDoesNotAffectTheOthers() {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def good(x):
@@ -1763,7 +1770,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void exceptionInsideNestedCallsLeavesInnerSitesUsable() throws Throwable {
+    public void exceptionInsideNestedCallsLeavesInnerSitesUsable() {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def inv(x):
@@ -1786,7 +1793,7 @@ public final class FunctionSupportTest {
 
     @Test
     @Timeout(120)
-    public void threadsSharingCallSitesAndFunctions() throws Throwable {
+    public void threadsSharingCallSitesAndFunctions() throws Throwable{
       var ctx = new ModuleContext();
       runIn(ctx, """
           def f0(x):
@@ -1828,7 +1835,7 @@ public final class FunctionSupportTest {
 
     @Test
     @Timeout(120)
-    public void threadsCompilingTheSameFunctionBodyAtTheSameTime() throws Throwable {
+    public void threadsCompilingTheSameFunctionBodyAtTheSameTime() throws Throwable{
       var ctx = new ModuleContext();
       runIn(ctx, """
           def fib(n):

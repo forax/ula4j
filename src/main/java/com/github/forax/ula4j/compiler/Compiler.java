@@ -9,6 +9,7 @@ import com.github.forax.ula4j.rt.ModuleContext;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.UndeclaredThrowableException;
 
 /// Facade: source -> AST -> `Script_<n>` class -> run `__main__`.
 public final class Compiler {
@@ -31,10 +32,16 @@ public final class Compiler {
   }
 
   /// Runs a program and returns its module, whose globals can then be inspected.
-  public static ModuleContext run(String source) throws Throwable {
+  public static ModuleContext run(String source) {
     var ctx = new ModuleContext();
     var main = compile(ctx, ASTBuilder.createScript(source));
-    main.invokeExact();
+    try {
+      main.invokeExact();
+    } catch(RuntimeException | Error e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new UndeclaredThrowableException(e);
+    }
     return ctx;
   }
 }
