@@ -28,8 +28,8 @@ public final class PyFunction {
 
   final CompiledEntryCache compiledEntryCache;
   final Stmt.FunctionDef functionDef;   // not compiled
-  volatile MethodHandle compiledEntry;  // compiled (should be read under a lock on compiledEntryCache)
-  MethodHandle entry;                   // compiled + captured arguments (racy access are ok)
+  volatile MethodHandle compiledEntry;  // compiled (should be accessed under a lock on compiledEntryCache)
+  volatile MethodHandle entry;          // compiled + captured arguments (should be accessed under a lock on functionDef)
 
   PyFunction(String name, List<String> parameters, boolean varargs,
              ModuleContext context, Stmt.FunctionDef functionDef, CompiledEntryCache compiledEntryCache,

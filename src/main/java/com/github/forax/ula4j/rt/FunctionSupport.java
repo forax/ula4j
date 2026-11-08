@@ -241,14 +241,7 @@ final class FunctionSupport {
       var  compiledEntry = getCompiledEntry(function);
 
       // 4. Let's bind captured arguments + self if it has never been done
-      // function.entry acts as a cache
-      var entry = function.entry;
-      if (entry == null) {
-        var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
-        var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
-        entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
-        function.entry = entry;
-      }
+      var entry = getEntry(function, compiledEntry);
 
       // 5. Adapt to the callsite signature
       var adapted = adapt(function, entry, argc).asType(type());
@@ -261,8 +254,28 @@ final class FunctionSupport {
       return adapted;
     }
 
+    static MethodHandle getEntry(PyFunction function, MethodHandle compiledEntry) {
+      // We do not want to have more than one entry for the same function
+      // otherwise it may use several slots of the PIC (synchronized + Double Check Locking)
+      var entry = function.entry;  // volatile read
+      if (entry != null) {
+        return entry;
+      }
+      synchronized(function.functionDef) {
+        entry = function.entry;  // volatile read
+        if (entry != null) {
+          return entry;
+        }
+        var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
+        var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
+        entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
+        function.entry = entry;  // volatile write
+        return entry;
+      }
+    }
+
     static MethodHandle getCompiledEntry(PyFunction function) {
-      // We do not want to compile the function several times, so synchronized block + Double Check Locking
+      // We do not want to compile the function several times (synchronized + Double Check Locking)
       var compiledEntry = function.compiledEntry;  // volatile read
       if (compiledEntry != null) {
         return compiledEntry;
