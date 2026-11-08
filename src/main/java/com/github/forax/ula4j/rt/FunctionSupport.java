@@ -69,18 +69,7 @@ final class FunctionSupport {
       var functionName = def.name();
       var parameters = def.parameters().stream().map(Stmt.FunctionDef.Param::name).toList();
       var varargs = def.rest().isPresent();
-      var compiledEntryCache = new PyFunction.CompiledEntryCache() {
-        private MethodHandle compiledEntry;
-
-        @Override
-        public MethodHandle compiledEntry() {
-          return compiledEntry;
-        }
-        @Override
-        public void compiledEntry(MethodHandle compiledEntry) {
-          this.compiledEntry = compiledEntry;
-        }
-      };
+      var compiledEntryCache = new PyFunction.CompiledEntryCache();
 
       var factory = MethodHandles.insertArguments(PY_FUNCTION, 0,
           functionName, parameters, varargs, def, compiledEntryCache);
@@ -264,10 +253,10 @@ final class FunctionSupport {
         var compiledEntry = function.compiledEntry;
         if (compiledEntry == null) {
           // try to find if there is already a cached compiled entry
-          compiledEntry = function.compiledEntryCache.compiledEntry();
+          compiledEntry = function.compiledEntryCache.compiledEntry;
           if (compiledEntry == null) {
             compiledEntry = compileBody(context, function.functionDef);
-            function.compiledEntryCache.compiledEntry(compiledEntry);
+            function.compiledEntryCache.compiledEntry = compiledEntry;
           }
           function.compiledEntry = compiledEntry;
         }

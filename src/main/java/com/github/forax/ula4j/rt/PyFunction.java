@@ -10,9 +10,8 @@ import static java.util.Objects.requireNonNull;
 /// A Python function. `entry` has the type `(PyFunction, Object x arity [, PyTuple rest]) -> Object`,
 /// with the captured values already bound.
 public final class PyFunction {
-  interface CompiledEntryCache {
-    MethodHandle compiledEntry();
-    void compiledEntry(MethodHandle compiledEntry);
+  static final class CompiledEntryCache {
+    MethodHandle compiledEntry;
   }
 
   private final String name;  //FIXME use real Python qualified name
