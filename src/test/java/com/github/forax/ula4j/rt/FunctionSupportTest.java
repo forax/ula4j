@@ -42,8 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 ///  - "cold":              the first call of a function is the one done through the shared call site
 public final class FunctionSupportTest {
 
-  // ------------------------------------------------------------------------------------------ helpers
-
   private static ModuleContext run(String source) {
     return Compiler.run(source);
   }
@@ -81,12 +79,8 @@ public final class FunctionSupportTest {
     assertEquals(expected, module.getGlobal(name), name);
   }
 
-  private static final String APPLY = """
-      def apply(fn, v):
-          return fn(v)
-      """;
 
-  // ------------------------------------------------------------------------------------------ sources
+  // -- sources generators
 
   /// n functions with a different body each, one shared call site (`apply`), three rounds
   /// (forward, backward, forward). `r<round>_<i>` is `100 + i`.
@@ -323,7 +317,6 @@ public final class FunctionSupportTest {
     return ctx;
   }
 
-  // ========================================================================================== def
 
   @Nested
   public final class Definition {
@@ -455,7 +448,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== one callee
 
   @Nested
   public final class MonomorphicCalls {
@@ -631,7 +623,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== few callees
 
   @Nested
   public final class PolymorphicCalls {
@@ -728,7 +719,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== many callees
 
   /// More than four distinct codes at one site: the site gives up its guard chain.
   @Nested
@@ -846,7 +836,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== rest
 
   @Nested
   public final class RestParameters {
@@ -1020,7 +1009,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== captures
 
   @Nested
   public final class CapturedValues {
@@ -1364,7 +1352,8 @@ public final class FunctionSupportTest {
                       return base
                   return n * fact(n - 1)
               return fact
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           a = apply(make(1), 5)
           b = apply(make(2), 5)
           c = apply(make(1), 5)
@@ -1385,7 +1374,8 @@ public final class FunctionSupportTest {
               def h(x):
                   return f(g(x))
               return h
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           a = compose(inc, dbl)
           b = compose(dbl, inc)
           c = compose(inc, inc)
@@ -1409,7 +1399,8 @@ public final class FunctionSupportTest {
                       return a * 100 + b * 10 + c
                   return f2
               return f1
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           x = curry(1)
           y = curry(4)
           rx = apply(apply(x, 2), 3)
@@ -1431,7 +1422,8 @@ public final class FunctionSupportTest {
                       s += x
                   return s
               return total
-          """ + APPLY + """
+          def apply(fn, v):
+            return fn(v)
           a = make(100)
           b = make(1000)
           r1 = apply(a, 5)
@@ -1444,7 +1436,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== global rebinding
 
   @Nested
   public final class GlobalRebinding {
@@ -1489,17 +1480,29 @@ public final class FunctionSupportTest {
               return f(v)
           a = g(1)
           """);
-      runIn(ctx, "f = 5\n");
-      var e = assertThrows(PyTypeError.class, () -> runIn(ctx, "b = g(1)\n"));
+
+      runIn(ctx, """
+          f = 5
+          """);
+      var e = assertThrows(PyTypeError.class, () -> runIn(ctx, "b = g(1)"));
       assertEquals("'int' object is not callable", e.getMessage());
-      runIn(ctx, "def f(x):\n    return x + 10\nc = g(1)\n");
+
+      runIn(ctx, """
+          def f(x):
+              return x + 10
+          c = g(1)
+          """);
       assertGlobal(ctx, "a", 2L);
       assertGlobal(ctx, "c", 11L);
     }
 
     @Test
     public void undefinedGlobalFunctionIsANameError() {
-      assertThrows(PyNameError.class, () -> Compiler.run("def g():\n    return nowhere()\ng()\n"));
+      assertThrows(PyNameError.class, () -> Compiler.run("""
+          def g():
+              return nowhere()
+          g()
+          """));
     }
 
     @Test
@@ -1518,7 +1521,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== def executed many times
 
   /// A `def` executed several times creates several function values sharing one compiled body.
   @Nested
@@ -1527,7 +1529,9 @@ public final class FunctionSupportTest {
     @ParameterizedTest(name = "{0} function values, module level")
     @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 10, 30})
     public void moduleLevelDefInALoop(int n) {
-      var source = APPLY + """
+      var source = """
+          def apply(fn, v):
+              return fn(v)
           total = 0
           for c in '""" + "a".repeat(n) + """
           ':
@@ -1541,7 +1545,9 @@ public final class FunctionSupportTest {
     @ParameterizedTest(name = "{0} function values, inside a function")
     @ValueSource(ints = {1, 2, 3, 4, 5, 6, 7, 10, 30})
     public void defInALoopInsideAFunction(int n) {
-      var source = APPLY + """
+      var source = """
+          def apply(fn, v):
+              return fn(v)
           def run():
               total = 0
               for c in '""" + "a".repeat(n) + """
@@ -1557,7 +1563,9 @@ public final class FunctionSupportTest {
 
     @Test
     public void functionValuesFromOneDefAreCalledThroughTheSameSiteSeveralTimes() {
-      var source = APPLY + """
+      var source = """
+          def apply(fn, v):
+              return fn(v)
           def make():
               def f(x):
                   return x + 1
@@ -1572,7 +1580,9 @@ public final class FunctionSupportTest {
 
     @Test
     public void manyFunctionValuesFromOneDefWithoutCaptures() {
-      var source = APPLY + """
+      var source = """
+          def apply(fn, v):
+              return fn(v)
           def make():
               def f(x):
                   return x + 1
@@ -1590,7 +1600,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== call errors
 
   @Nested
   public final class CallErrors {
@@ -1620,9 +1629,21 @@ public final class FunctionSupportTest {
     @Test
     public void wrongArityThroughASharedSite() {
       assertEquals("two() missing 1 required positional argument: 'b'",
-          assertTypeErrorMessage("def two(a, b):\n    return a\n" + APPLY + "apply(two, 1)\n"));
+          assertTypeErrorMessage("""
+              def two(a, b):
+                  return a
+              def apply(fn, v):
+                  return fn(v)
+              apply(two, 1)
+              """));
       assertEquals("none() takes 0 positional arguments but 1 was given",
-          assertTypeErrorMessage("def none():\n    return 1\n" + APPLY + "apply(none, 1)\n"));
+          assertTypeErrorMessage("""
+              def none():
+                  return 1
+              def apply(fn, v):
+                  return fn(v)
+              apply(none, 1)
+              """));
     }
 
     @Test
@@ -1643,7 +1664,11 @@ public final class FunctionSupportTest {
     @Test
     public void notCallableThroughASharedSite() {
       assertEquals("'str' object is not callable",
-          assertTypeErrorMessage(APPLY + "apply('text', 1)\n"));
+          assertTypeErrorMessage("""
+              def apply(fn, v):
+                  return fn(v)
+              apply('text', 1)
+              """));
     }
 
     @Test
@@ -1679,7 +1704,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== recovery
 
   /// A call site that failed must stay usable: the failure must not link anything wrong.
   @Nested
@@ -1691,11 +1715,13 @@ public final class FunctionSupportTest {
       runIn(ctx, """
           def inv(x):
               return 100 // x
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           a = apply(inv, 5)
           """);
-      assertThrows(PyZeroDivisionError.class, () -> runIn(ctx, "b = apply(inv, 0)\n"));
-      runIn(ctx, "c = apply(inv, 20)\n");
+      assertThrows(PyZeroDivisionError.class, () -> runIn(ctx, "b = apply(inv, 0)"));
+
+      runIn(ctx, "c = apply(inv, 20)");
       assertGlobal(ctx, "a", 20L);
       assertGlobal(ctx, "c", 5L);
     }
@@ -1708,24 +1734,35 @@ public final class FunctionSupportTest {
               return x
           def two(a, b):
               return a
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           a = apply(one, 1)
           """);
       for (var i = 0; i < 3; i++) {
-        var e = assertThrows(PyTypeError.class, () -> runIn(ctx, "x = apply(two, 1)\n"));
+        var e = assertThrows(PyTypeError.class,
+            () -> runIn(ctx, "x = apply(two, 1)"));
         assertEquals("two() missing 1 required positional argument: 'b'", e.getMessage());
       }
-      runIn(ctx, "b = apply(one, 2)\n");
+
+      runIn(ctx, "b = apply(one, 2)");
       assertGlobal(ctx, "b", 2L);
     }
 
     @Test
     public void nonCallableThenCallableAtTheSameSite() {
       var ctx = new ModuleContext();
-      runIn(ctx, "def one(x):\n    return x\n" + APPLY + "a = apply(one, 1)\n");
-      var e = assertThrows(PyTypeError.class, () -> runIn(ctx, "x = apply(None, 1)\n"));
+      runIn(ctx, """
+          def one(x):
+              return x
+          def apply(fn, v):
+              return fn(v)
+          a = apply(one, 1)
+          """);
+      var e = assertThrows(PyTypeError.class,
+          () -> runIn(ctx, "x = apply(None, 1)"));
       assertEquals("'NoneType' object is not callable", e.getMessage());
-      runIn(ctx, "b = apply(one, 2)\n");
+
+      runIn(ctx, "b = apply(one, 2)");
       assertGlobal(ctx, "b", 2L);
     }
 
@@ -1741,11 +1778,13 @@ public final class FunctionSupportTest {
               return x + 2
           def two(a, b):
               return a
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           a = apply(f0, 0) + apply(f1, 0) + apply(f2, 0)
           """);
-      assertThrows(PyTypeError.class, () -> runIn(ctx, "x = apply(two, 1)\n"));
-      runIn(ctx, "b = apply(f2, 0) + apply(f1, 0) + apply(f0, 0)\n");
+      assertThrows(PyTypeError.class, () -> runIn(ctx, "x = apply(two, 1)"));
+
+      runIn(ctx, "b = apply(f2, 0) + apply(f1, 0) + apply(f0, 0)");
       assertGlobal(ctx, "a", 3L);
       assertGlobal(ctx, "b", 3L);
     }
@@ -1760,11 +1799,13 @@ public final class FunctionSupportTest {
               return x // 0
           def other(x):
               return x * 2
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           a = apply(good, 1) + apply(other, 1)
           """);
-      assertThrows(PyZeroDivisionError.class, () -> runIn(ctx, "x = apply(bad, 1)\n"));
-      runIn(ctx, "b = apply(good, 1) + apply(other, 1)\n");
+      assertThrows(PyZeroDivisionError.class, () -> runIn(ctx, "x = apply(bad, 1)"));
+
+      runIn(ctx, "b = apply(good, 1) + apply(other, 1)");
       assertGlobal(ctx, "a", 4L);
       assertGlobal(ctx, "b", 4L);
     }
@@ -1786,7 +1827,6 @@ public final class FunctionSupportTest {
     }
   }
 
-  // ========================================================================================== threads
 
   @Nested
   public final class Concurrency {
@@ -1802,7 +1842,8 @@ public final class FunctionSupportTest {
               return x + 2
           def f2(x):
               return x + 3
-          """ + APPLY + """
+          def apply(fn, v):
+              return fn(v)
           def work(n):
               total = 0
               i = 0
@@ -1819,12 +1860,8 @@ public final class FunctionSupportTest {
         for (var t = 0; t < threads; t++) {
           var name = "result" + t;
           futures.add(pool.submit(() -> {
-            try {
-              runIn(ctx, name + " = work(500)\n");
-              return ctx.getGlobal(name);
-            } catch (Throwable e) {
-              throw new AssertionError(e);
-            }
+            runIn(ctx, name + " = work(500)");
+            return ctx.getGlobal(name);
           }));
         }
         for (var future : futures) {
@@ -1849,12 +1886,8 @@ public final class FunctionSupportTest {
         for (var t = 0; t < threads; t++) {
           var name = "fib" + t;
           futures.add(pool.submit(() -> {
-            try {
-              runIn(ctx, name + " = fib(15)\n");
-              return ctx.getGlobal(name);
-            } catch (Throwable e) {
-              throw new AssertionError(e);
-            }
+            runIn(ctx, name + " = fib(15)");
+            return ctx.getGlobal(name);
           }));
         }
         for (var future : futures) {
