@@ -310,14 +310,6 @@ final class FunctionSupport {
       }
     }
 
-    /*private static Object[] capturedArgumentsAndSelf(PyFunction function) {
-      var capturedArgs = function.capturedArgs;
-      var array = new Object[capturedArgs.length + 1];
-      System.arraycopy(capturedArgs, 0, array, 0, capturedArgs.length);
-      array[capturedArgs.length] = function;
-      return array;
-    }*/
-
     private static boolean sameFunction(PyFunction expected, Object callee) {
       return callee == expected;
     }
