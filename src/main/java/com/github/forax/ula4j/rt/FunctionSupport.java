@@ -256,22 +256,19 @@ final class FunctionSupport {
 
     static MethodHandle getEntry(PyFunction function, MethodHandle compiledEntry) {
       // We do not want to have more than one entry for the same function
-      // otherwise it may use several slots of the PIC (synchronized + Double Check Locking)
+      // otherwise it may use several slots of the PIC
       var entry = function.entry;  // volatile read
       if (entry != null) {
         return entry;
       }
-      synchronized(function.functionDef) {
-        entry = function.entry;  // volatile read
-        if (entry != null) {
-          return entry;
-        }
-        var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
-        var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
-        entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
-        function.entry = entry;  // volatile write
-        return entry;
+      var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
+      var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
+      entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
+      if (!PyFunction.ENTRY.compareAndSet(function, (MethodHandle) null, entry)) {
+        // looser, so we need to reload the field
+        return function.entry;  // volatile read
       }
+      return entry;
     }
 
     static MethodHandle getCompiledEntry(PyFunction function) {

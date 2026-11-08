@@ -3,6 +3,8 @@ package com.github.forax.ula4j.rt;
 import com.github.forax.ula4j.ast.Stmt;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
@@ -19,6 +21,17 @@ public final class PyFunction {
     MethodHandle thunkEntry;
   }
 
+  static final VarHandle ENTRY;
+  static {
+    var lookup = MethodHandles.lookup();
+    try {
+      ENTRY = lookup.findVarHandle(PyFunction.class, "entry", MethodHandle.class)
+          .withInvokeExactBehavior();
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      throw new AssertionError(e);
+    }
+  }
+
   private final String name;  //FIXME use real Python qualified name
   private final List<String> parameters;
   private final boolean varargs;
@@ -28,8 +41,8 @@ public final class PyFunction {
 
   final CompiledEntryCache compiledEntryCache;
   final Stmt.FunctionDef functionDef;   // not compiled
-  volatile MethodHandle compiledEntry;  // compiled (should be accessed under a lock on compiledEntryCache)
-  volatile MethodHandle entry;          // compiled + captured arguments (should be accessed under a lock on functionDef)
+  volatile MethodHandle compiledEntry;  // compiled (accessed under a lock on compiledEntryCache)
+  volatile MethodHandle entry;          // compiled + captured arguments (race + CAS)
 
   PyFunction(String name, List<String> parameters, boolean varargs,
              ModuleContext context, Stmt.FunctionDef functionDef, CompiledEntryCache compiledEntryCache,
