@@ -232,7 +232,7 @@ final class FunctionSupport {
       if (entry == null) {
         var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
         var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
-        entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop self
+        entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
         function.entry = entry;
       }
 
