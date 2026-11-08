@@ -320,7 +320,7 @@ final class FunctionSupport {
       var captureCount = BytecodeGenerator.captureNames(def, scope.analysis()).size();
       var type = BytecodeGenerator.bodyType(captureCount, def.parameters().size(), def.rest().isPresent());
       try {
-        return LOOKUP.findStatic(clazz, def.name(), type).asFixedArity();
+        return LOOKUP.findStatic(clazz, def.name(), type);
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
