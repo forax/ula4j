@@ -131,12 +131,13 @@ final class FunctionSupport {
 
         // 3. Calculate exact length: captured args + self + provided args
         var capturedArgs = function.capturedArgs;
-        var arguments = new Object[capturedArgs.length + 1 + argc];
+        var capturedLength = capturedArgs.length;
+        var arguments = new Object[capturedLength + 1 + argc];
 
         // 4. Populate the arguments array
-        System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
-        arguments[capturedArgs.length] = function; // self reference
-        System.arraycopy(args, 0, arguments, capturedArgs.length + 1, argc);
+        System.arraycopy(capturedArgs, 0, arguments, 0, capturedLength);
+        arguments[capturedLength] = function; // self reference
+        System.arraycopy(args, 0, arguments, capturedLength + 1, argc);
 
         return compiledEntry.invokeWithArguments(arguments);
       }
@@ -145,12 +146,13 @@ final class FunctionSupport {
         // 3. Calculate exact length: captured args + self + fixed args + 1 (for the rest tuple)
         var arity = function.arity();
         var capturedArgs = function.capturedArgs;
-        var arguments = new Object[capturedArgs.length + 1 + arity + 1];
+        var capturedLength = capturedArgs.length;
+        var arguments = new Object[capturedLength + 1 + arity + 1];
 
         // 4. Populate the fixed arguments
-        System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
-        arguments[capturedArgs.length] = function; // self reference
-        System.arraycopy(args, 0, arguments, capturedArgs.length + 1, arity);
+        System.arraycopy(capturedArgs, 0, arguments, 0, capturedLength);
+        arguments[capturedLength] = function; // self reference
+        System.arraycopy(args, 0, arguments, capturedLength + 1, arity);
 
         // 5. Pack the remaining arguments into a PyTuple
         var restLength = args.length - arity;
