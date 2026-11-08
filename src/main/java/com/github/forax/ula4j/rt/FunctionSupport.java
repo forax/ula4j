@@ -55,7 +55,7 @@ final class FunctionSupport {
       var lookup = MethodHandles.lookup();
       try {
         PY_FUNCTION = lookup.findConstructor(PyFunction.class,
-            MethodType.methodType(void.class, String.class, List.class, boolean.class, Stmt.FunctionDef.class, PyFunction.CompiledEntryCache.class, Object[].class));
+            MethodType.methodType(void.class, String.class, List.class, boolean.class, ModuleContext.class, Stmt.FunctionDef.class, PyFunction.CompiledEntryCache.class, Object[].class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
@@ -63,6 +63,7 @@ final class FunctionSupport {
 
     static CallSite def(MethodHandles.Lookup lookup, MethodType type, int astIndex) {
       var moduleClassLoader = (ModuleClassLoader) lookup.lookupClass().getClassLoader();
+      var context = moduleClassLoader.context();
       var dictionary = moduleClassLoader.dictionary();
       var def = dictionary.lookup(astIndex);
 
@@ -72,7 +73,7 @@ final class FunctionSupport {
       var compiledEntryCache = new PyFunction.CompiledEntryCache();
 
       var factory = MethodHandles.insertArguments(PY_FUNCTION, 0,
-          functionName, parameters, varargs, def, compiledEntryCache);
+          functionName, parameters, varargs, context, def, compiledEntryCache);
       var target = factory
           .asCollector(Object[].class, type.parameterCount())
           .asType(type);
@@ -108,17 +109,17 @@ final class FunctionSupport {
         var lookup = MethodHandles.lookup();
         try {
           MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
-              MethodType.methodType(Object.class, ModuleContext.class, Object.class, Object[].class));
+              MethodType.methodType(Object.class, Object.class, Object[].class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
         }
       }
 
-      static Object megamorphic(ModuleContext context, Object callee, Object[] args) throws Throwable {
+      static Object megamorphic(Object callee, Object[] args) throws Throwable {
         var function = asFunction(callee);
 
         // 1. Let's compile if it has never been done
-        var compiledEntry = getCompiledEntry(function, context);
+        var compiledEntry = getCompiledEntry(function);
 
         if (function.varargs()) {
           return megamorphicVarargs(function, compiledEntry, args);
@@ -184,27 +185,23 @@ final class FunctionSupport {
       }
     }
 
-    static CallSite call(MethodHandles.Lookup lookup, MethodType type) {
-      var context = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context();
-      return new FunctionSupport.FunctionCallSite(type, context);
+    static CallSite call(MethodType type) {
+      return new FunctionSupport.FunctionCallSite(type);
     }
 
     private static final int MAX_DEPTH = 4;
 
-    private final ModuleContext context;
     private final FunctionCallSite root;
     private final int depth;
 
-    FunctionCallSite(MethodType type, ModuleContext context) {
+    FunctionCallSite(MethodType type) {
       depth = 0;
-      this.context = context;
       super(type);
       root = this;
       setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
     }
 
-    private FunctionCallSite(MethodType type,  ModuleContext context, FunctionCallSite root, int depth) {
-      this.context = context;
+    private FunctionCallSite(MethodType type, FunctionCallSite root, int depth) {
       this.root = root;
       this.depth = depth;
       super(type);
@@ -217,14 +214,13 @@ final class FunctionSupport {
       // 1. If megamorphic
       var argc = type().parameterCount() - 1;
       if (depth == MAX_DEPTH) {
-        var target = Megamorphic.MEGAMORPHIC.bindTo(context)
-            .asCollector(Object[].class, argc);
+        var target = Megamorphic.MEGAMORPHIC.asCollector(Object[].class, argc);
         root.setTarget(target);
         return target;
       }
 
       // 2. Let's compile if it has never been done
-      var  compiledEntry = getCompiledEntry(function, context);
+      var  compiledEntry = getCompiledEntry(function);
 
       // 3. Let's bind captured arguments + self if it has never been done
       // function.entry acts as a cache, we may have several versions but this is idempotent
@@ -241,13 +237,13 @@ final class FunctionSupport {
 
       // 5. Install the inlining cache
       var test = SAME_ENTRY.bindTo(entry);
-      var fallback = new FunctionCallSite(type(), context, root, depth + 1).dynamicInvoker();
+      var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
       return adapted;
     }
 
-    static MethodHandle getCompiledEntry(PyFunction function, ModuleContext context) {
+    static MethodHandle getCompiledEntry(PyFunction function) {
       // We do not want to compile the function several times, so synchronized block
       synchronized (function.compiledEntryCache) {
         var compiledEntry = function.compiledEntry;
@@ -255,7 +251,7 @@ final class FunctionSupport {
           // try to find if there is already a cached compiled entry
           compiledEntry = function.compiledEntryCache.compiledEntry;
           if (compiledEntry == null) {
-            compiledEntry = compileBody(context, function.functionDef);
+            compiledEntry = compileBody(function.context, function.functionDef);
             function.compiledEntryCache.compiledEntry = compiledEntry;
           }
           function.compiledEntry = compiledEntry;

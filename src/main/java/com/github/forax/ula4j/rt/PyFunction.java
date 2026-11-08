@@ -18,6 +18,7 @@ public final class PyFunction {
   private final List<String> parameters;
   private final boolean varargs;
 
+  final ModuleContext context;
   final Object[] capturedArgs;
 
   final CompiledEntryCache compiledEntryCache;
@@ -26,11 +27,13 @@ public final class PyFunction {
   MethodHandle entry;                   // compiled + captured arguments (racy access are ok)
 
   PyFunction(String name, List<String> parameters, boolean varargs,
-             Stmt.FunctionDef functionDef, CompiledEntryCache compiledEntryCache, Object[] capturedArgs) {
+             ModuleContext context, Stmt.FunctionDef functionDef, CompiledEntryCache compiledEntryCache,
+             Object[] capturedArgs) {
     this.name = name;
     this.parameters = parameters;
     this.varargs = varargs;
 
+    this.context = context;
     this.capturedArgs = capturedArgs;
     this.functionDef = functionDef;
     this.compiledEntryCache = compiledEntryCache;

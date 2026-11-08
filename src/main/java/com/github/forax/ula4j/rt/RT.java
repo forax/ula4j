@@ -146,7 +146,7 @@ public final class RT {
   }
 
   public static CallSite bsmCall(MethodHandles.Lookup lookup, String name, MethodType type) {
-    return FunctionSupport.FunctionCallSite.call(lookup, type);
+    return FunctionSupport.FunctionCallSite.call(type);
   }
 
   public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
