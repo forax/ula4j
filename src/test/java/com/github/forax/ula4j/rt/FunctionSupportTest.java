@@ -1833,7 +1833,7 @@ public final class FunctionSupportTest {
 
     @Test
     @Timeout(120)
-    public void threadsSharingCallSitesAndFunctions() throws Throwable{
+    public void threadsSharingCallSitesAndFunctions() throws Throwable {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def f0(x):
@@ -1872,7 +1872,7 @@ public final class FunctionSupportTest {
 
     @Test
     @Timeout(120)
-    public void threadsCompilingTheSameFunctionBodyAtTheSameTime() throws Throwable{
+    public void threadsCompilingTheSameFunctionBodyAtTheSameTime() throws Throwable {
       var ctx = new ModuleContext();
       runIn(ctx, """
           def fib(n):
