@@ -13,7 +13,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
-import java.util.ArrayList;
 import java.util.List;
 
 /// Implementation of the `def` / global bootstraps and of the lazy compilation of function bodies.
@@ -48,77 +47,181 @@ final class FunctionSupport {
   // ---- def
 
   static final class DefCallSite {
-
-    private static final MethodHandles.Lookup LOOKUP;
-    private static final MethodHandle MAKE_FUNCTION, COMPILE_AND_INVOKE;
-
+    private static final MethodHandle PY_FUNCTION;
     static {
       var lookup = MethodHandles.lookup();
-      LOOKUP = lookup;
       try {
-        MAKE_FUNCTION = lookup.findStatic(DefCallSite.class, "makeFunction",
-            MethodType.methodType(PyFunction.class, ModuleContext.class, Stmt.FunctionDef.class, Object[].class));
-        COMPILE_AND_INVOKE = lookup.findStatic(DefCallSite.class, "compileAndInvoke",
-            MethodType.methodType(Object.class,
-                ModuleContext.class, Stmt.FunctionDef.class, Object[].class, PyFunction.class, Object[].class));
+        PY_FUNCTION = lookup.findConstructor(PyFunction.class,
+            MethodType.methodType(void.class, String.class, List.class, boolean.class, Stmt.FunctionDef.class, PyFunction.CompiledEntryCache.class, Object[].class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
     }
 
-    /// `type` is `(Object x nCaptures) -> Object`.
     static CallSite def(MethodHandles.Lookup lookup, MethodType type, int astIndex) {
       var moduleClassLoader = (ModuleClassLoader) lookup.lookupClass().getClassLoader();
-      var ctx = moduleClassLoader.context();
       var dictionary = moduleClassLoader.dictionary();
-      var def = dictionary.retrieve(astIndex);
-      var factory = MethodHandles.insertArguments(MAKE_FUNCTION, 0, ctx, def)  // (Object[]) -> PyFunction
-          .asCollector(Object[].class, type.parameterCount())
-          .asType(type);
-      return new ConstantCallSite(factory);
-    }
+      var def = dictionary.lookup(astIndex);
 
-    static MethodType entryMethodType(int arity, boolean varargs) {
-      var types = new ArrayList<Class<?>>();
-      types.add(PyFunction.class);
-      for (var i = 0; i < arity; i++) {
-        types.add(Object.class);
-      }
-      if (varargs) {
-        types.add(PyTuple.class);
-      }
-      return MethodType.methodType(Object.class, types);
-    }
-
-    static PyFunction makeFunction(ModuleContext ctx, Stmt.FunctionDef def, Object[] captures) {
+      var functionName = def.name();
       var parameters = def.parameters().stream().map(Stmt.FunctionDef.Param::name).toList();
       var varargs = def.rest().isPresent();
-      var lazy = lazyEntry(ctx, def, captures, parameters.size(), varargs);
-      return new PyFunction(def.name(), parameters, varargs, lazy, false);
+      var compiledEntryCache = new PyFunction.CompiledEntryCache() {
+        private MethodHandle compiledEntry;
+
+        @Override
+        public MethodHandle compiledEntry() {
+          return compiledEntry;
+        }
+        @Override
+        public void compiledEntry(MethodHandle compiledEntry) {
+          this.compiledEntry = compiledEntry;
+        }
+      };
+
+      var factory = MethodHandles.insertArguments(PY_FUNCTION, 0,
+          functionName, parameters, varargs, def, compiledEntryCache);
+      var target = factory
+          .asCollector(Object[].class, type.parameterCount())
+          .asType(type);
+      return new ConstantCallSite(target);
+    }
+  }
+
+  /// A call site `(Object callee, Object arg0, ..., Object argN-1) -> Object`.
+  /// Each site owns a bounded chain of guards on the entry of the callee.
+  static final class FunctionCallSite extends MutableCallSite {
+    private static final MethodHandles.Lookup LOOKUP;
+    private static final MethodHandle FALLBACK, SAME_COMPILED_ENTRY;
+    static {
+      var lookup = MethodHandles.lookup();
+      LOOKUP = lookup;
+      try {
+        FALLBACK = lookup.findVirtual(FunctionCallSite.class, "fallback",
+            MethodType.methodType(MethodHandle.class, Object.class));
+        SAME_COMPILED_ENTRY = lookup.findStatic(FunctionCallSite.class, "sameCompiledEntry",
+            MethodType.methodType(boolean.class, MethodHandle.class, Object.class));
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
     }
 
-    private static MethodHandle bind(MethodHandle body, Object[] captures) {
-      return MethodHandles.insertArguments(body, 0, captures);
+    private static final class Megamorphic {
+      static final MethodHandle MEGAMORPHIC;
+      static {
+        var lookup = MethodHandles.lookup();
+        try {
+          MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
+              MethodType.methodType(MethodHandle.class, MethodType.class, Object.class));;
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+          throw new AssertionError(e);
+        }
+      }
+
+      static MethodHandle megamorphic(MethodType type, Object callee) {
+        var function = asFunction(callee);
+        var entry = function.entry;
+        var argc = type.parameterCount() - 1;
+        return adapt(function, entry, argc).asType(type);
+      }
     }
 
-    /// A handle of the same type as the compiled entry that compiles the body on its first call.
-    private static MethodHandle lazyEntry(ModuleContext ctx, Stmt.FunctionDef def, Object[] captures,
-                                          int arity, boolean varargs) {
-      var impl = MethodHandles.insertArguments(COMPILE_AND_INVOKE, 0, ctx, def, captures);
-      // (PyFunction, Object[]) -> Object
-      var parameterCount = arity + (varargs ? 1 : 0);
-      return impl.asCollector(Object[].class, parameterCount).asType(entryMethodType(arity, varargs));
+    private static final class RestAdapter {
+      private static final MethodHandle FROM_ARRAY;
+      static {
+        var lookup = MethodHandles.lookup();
+        try {
+          FROM_ARRAY = lookup.findStatic(TupleIntrinsics.class, "fromArray",
+              MethodType.methodType(PyTuple.class, Object[].class)).asFixedArity();
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+          throw new AssertionError(e);
+        }
+      }
     }
 
-    static Object compileAndInvoke(ModuleContext ctx, Stmt.FunctionDef def, Object[] captures,
-                                   PyFunction self, Object[] args) throws Throwable {
-      var body = compileBody(ctx, def);
-      var entry = bind(body, captures);
-      self.install(entry);
-      var all = new Object[args.length + 1];
-      all[0] = self;
-      System.arraycopy(args, 0, all, 1, args.length);
-      return entry.invokeWithArguments(all);
+    static CallSite call(MethodHandles.Lookup lookup, MethodType type) {
+      var context = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context();
+      return new FunctionSupport.FunctionCallSite(type, context);
+    }
+
+    private static final int MAX_DEPTH = 4;
+
+    private final ModuleContext context;
+    private final FunctionCallSite root;
+    private final int depth;
+
+    FunctionCallSite(MethodType type, ModuleContext context) {
+      depth = 0;
+      this.context = context;
+      super(type);
+      root = this;
+      setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
+    }
+
+    private FunctionCallSite(MethodType type,  ModuleContext context, FunctionCallSite root, int depth) {
+      this.context = context;
+      this.root = root;
+      this.depth = depth;
+      super(type);
+      setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
+    }
+
+    MethodHandle fallback(Object callee) {
+      var function = asFunction(callee);
+
+      MethodHandle compiledEntry;
+      // We do not want to compile the function several times, so synchronized block
+      synchronized (function.compiledEntryCache) {
+
+        // 1. Let's compile if it has never been done
+        compiledEntry = function.compiledEntry;
+        if (compiledEntry == null) {
+          // try to find if there is already a cached compiled entry
+          compiledEntry = function.compiledEntryCache.compiledEntry();
+          if (compiledEntry == null) {
+            compiledEntry = compileBody(context, function.functionDef);
+            function.compiledEntryCache.compiledEntry(compiledEntry);
+          }
+          function.compiledEntry = compiledEntry;
+        }
+      }
+
+      // 2. Let's bind captured arguments + self if it has never been done
+      // function.entry acts as a cache, we may have several versions but this is idempotent
+      var entry = function.entry;
+      if (entry == null) {
+        var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
+        var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
+        entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop self
+        function.entry = entry;
+      }
+
+      // 3. Adapt to the callsite signature
+      var argc = type().parameterCount() - 1;
+      var adapted = adapt(function, entry, argc).asType(type());
+
+      // 4. Install the inlining cache
+      if (depth >= MAX_DEPTH) {
+        root.setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), Megamorphic.MEGAMORPHIC.bindTo(type())));
+        return adapted;
+      }
+      var test = SAME_COMPILED_ENTRY.bindTo(compiledEntry);
+      var fallback = new FunctionCallSite(type(), context, root, depth + 1).dynamicInvoker();
+      setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
+
+      return adapted;
+    }
+
+    private static Object[] capturedArgumentsAndSelf(PyFunction function) {
+      var capturedArgs = function.capturedArgs;
+      var array = new Object[capturedArgs.length + 1];
+      System.arraycopy(capturedArgs, 0, array, 0, capturedArgs.length);
+      array[capturedArgs.length] = function;
+      return array;
+    }
+
+    private static boolean sameCompiledEntry(MethodHandle expected, Object callee) {
+      return callee instanceof PyFunction f && f.compiledEntry == expected;
     }
 
     private static MethodHandle compileBody(ModuleContext ctx, Stmt.FunctionDef def) {
@@ -137,95 +240,6 @@ final class FunctionSupport {
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
-    }
-  }
-
-  /// A call site `(Object callee, Object arg0, ..., Object argN-1) -> Object`.
-  /// Each site owns a bounded chain of guards on the entry of the callee.
-  static final class FunctionCallSite extends MutableCallSite {
-    private static final MethodHandle FALLBACK, SAME_ENTRY;
-    static {
-      var lookup = MethodHandles.lookup();
-      try {
-        FALLBACK = lookup.findVirtual(FunctionCallSite.class, "fallback",
-            MethodType.methodType(MethodHandle.class, Object.class));
-        SAME_ENTRY = lookup.findStatic(FunctionCallSite.class, "sameEntry",
-            MethodType.methodType(boolean.class, MethodHandle.class, Object.class));
-      } catch (NoSuchMethodException | IllegalAccessException e) {
-        throw new AssertionError(e);
-      }
-    }
-
-    private static final class Megamorphic {
-      static final MethodHandle ENTRY;
-      static {
-        var lookup = MethodHandles.lookup();
-        try {
-          ENTRY = lookup.findVirtual(PyFunction.class, "entry", MethodType.methodType(MethodHandle.class))
-              .asType(MethodType.methodType(MethodHandle.class, Object.class));
-        } catch (NoSuchMethodException | IllegalAccessException e) {
-          throw new AssertionError(e);
-        }
-      }
-    }
-
-    private static final class RestAdapter {
-      private static final MethodHandle FROM_ARRAY;
-      static {
-        var lookup = MethodHandles.lookup();
-        try {
-          FROM_ARRAY = lookup.findStatic(TupleIntrinsics.class, "fromArray",
-              MethodType.methodType(PyTuple.class, Object[].class)).asFixedArity();
-        } catch (NoSuchMethodException | IllegalAccessException e) {
-          throw new AssertionError(e);
-        }
-      }
-    }
-
-    private static final int MAX_DEPTH = 4;
-
-    private final FunctionCallSite root;
-    private final int depth;
-
-    FunctionCallSite(MethodType type) {
-      depth = 0;
-      super(type);
-      root = this;
-      setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
-    }
-
-    private FunctionCallSite(MethodType type, FunctionCallSite root, int depth) {
-      this.root = root;
-      this.depth = depth;
-      super(type);
-      setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
-    }
-
-    MethodHandle fallback(Object callee) throws Throwable {
-      var function = asFunction(callee);
-      var entry = function.entry();
-      var argc = type().parameterCount() - 1;
-      var adapted = adapt(function, entry, argc).asType(type());
-      var compiled = function.isCompiled();
-      if (compiled) {
-        link(entry, adapted);
-      }
-      // the first call goes through the compiling trampoline, the next call links
-      return adapted;
-    }
-
-    private static boolean sameEntry(MethodHandle expected, Object callee) {
-      return callee instanceof PyFunction f && f.entry() == expected;
-    }
-
-    private void link(MethodHandle entry, MethodHandle adapted) {
-      if (depth >= MAX_DEPTH) {
-        root.setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), Megamorphic.ENTRY));
-        return;
-      }
-      var test = SAME_ENTRY.bindTo(entry);
-      var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
-      setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
     }
 
     // ------------------------------------------------------------------ helpers

@@ -18,12 +18,11 @@ public final class Dictionary {
     return index;
   }
 
-  public Stmt.FunctionDef retrieve(int index) {
+  public Stmt.FunctionDef lookup(int index) {
     var function =  functions.get(index);
     if (function == null) {
       throw new AssertionError("function not found: " + index);
     }
-    functions.set(index, null);  // clear for the GC
     return function;
   }
 }
