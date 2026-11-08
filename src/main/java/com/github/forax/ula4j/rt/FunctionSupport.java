@@ -56,11 +56,13 @@ final class FunctionSupport {
       var lookup = MethodHandles.lookup();
       try {
         PY_FUNCTION = lookup.findConstructor(PyFunction.class,
-            MethodType.methodType(void.class, String.class, List.class, boolean.class, ModuleContext.class, Stmt.FunctionDef.class, PyFunction.CompiledEntryCache.class, Object[].class));
+            MethodType.methodType(void.class, PyFunction.Code.class, Object[].class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
       }
     }
+
+    private static final Object[] EMPTY_CAPTURED_ARGS = new Object[0];
 
     static CallSite def(MethodHandles.Lookup lookup, MethodType type, int astIndex) {
       var moduleClassLoader = (ModuleClassLoader) lookup.lookupClass().getClassLoader();
@@ -71,12 +73,17 @@ final class FunctionSupport {
       var functionName = def.name();
       var parameters = def.parameters().stream().map(Stmt.FunctionDef.Param::name).toList();
       var varargs = def.rest().isPresent();
-      var compiledEntryCache = new PyFunction.CompiledEntryCache();
+      var captureCount = type.parameterCount();
+      var code = new PyFunction.Code(functionName, parameters, varargs, captureCount, context, def);
 
-      var factory = MethodHandles.insertArguments(PY_FUNCTION, 0,
-          functionName, parameters, varargs, context, def, compiledEntryCache);
+      if (captureCount == 0) {
+        var function = new PyFunction(code, EMPTY_CAPTURED_ARGS);
+        return new ConstantCallSite(MethodHandles.constant(type.returnType(), function));
+      }
+
+      var factory = PY_FUNCTION.bindTo(code);
       var target = factory
-          .asCollector(Object[].class, type.parameterCount())
+          .asCollector(Object[].class, captureCount)
           .asType(type);
       return new ConstantCallSite(target);
     }
@@ -85,21 +92,6 @@ final class FunctionSupport {
   /// A call site `(Object callee, Object arg0, ..., Object argN-1) -> Object`.
   /// Each site owns a bounded chain of guards on the entry of the callee.
   static final class FunctionCallSite extends MutableCallSite {
-    private static final MethodHandles.Lookup LOOKUP;
-    private static final MethodHandle FALLBACK, SAME_ENTRY;
-    static {
-      var lookup = MethodHandles.lookup();
-      LOOKUP = lookup;
-      try {
-        FALLBACK = lookup.findVirtual(FunctionCallSite.class, "fallback",
-            MethodType.methodType(MethodHandle.class, Object.class));
-        SAME_ENTRY = lookup.findStatic(FunctionCallSite.class, "sameEntry",
-            MethodType.methodType(boolean.class, MethodHandle.class, Object.class));
-      } catch (NoSuchMethodException | IllegalAccessException e) {
-        throw new AssertionError(e);
-      }
-    }
-
     private static final class Megamorphic {
       private Megamorphic() {
         throw new AssertionError();
@@ -128,31 +120,31 @@ final class FunctionSupport {
       }
 
       private static MethodHandle getThunkEntry(PyFunction function) {
-        var cache = function.compiledEntryCache;
-        var thunkEntry = cache.thunkEntry;
+        var code = function.code;
+        var thunkEntry = code.thunkEntry;
         if (thunkEntry != null) {
           return thunkEntry;
         }
-        return computeThunkEntry(function, cache);
+        return computeThunkEntry(code);
       }
 
-      private static MethodHandle computeThunkEntry(PyFunction function, PyFunction.CompiledEntryCache cache) {
-        var compiledEntry = getCompiledEntry(function);
-        var thunkEntry = createThunk(compiledEntry, function);
-        cache.thunkEntry = thunkEntry;
+      private static MethodHandle computeThunkEntry(PyFunction.Code code) {
+        var compiledEntry = getCompiledEntry(code);
+        var thunkEntry = createThunk(compiledEntry, code);
+        code.thunkEntry = thunkEntry;
         return thunkEntry;
       }
 
-      private static MethodHandle createThunk(MethodHandle compiledEntry, PyFunction function) {
+      private static MethodHandle createThunk(MethodHandle compiledEntry, PyFunction.Code code) {
         // 1. Spread captured arguments.
-        var captureCount = function.capturedArgs.length;
+        var captureCount = code.captureCount;
         var handle = captureCount == 0
             ? MethodHandles.dropArguments(compiledEntry, 0, Object[].class)
             : compiledEntry.asSpreader(0, Object[].class, captureCount);
 
         // 2. Ordinary function: spread positional arguments.
-        var arity = function.arity();
-        if (!function.varargs()) {
+        var arity = code.parameters.size();
+        if (!code.varargs) {
           return arity == 0
               ? MethodHandles.dropArguments(handle, 2, Object[].class)
               : handle.asSpreader(2, Object[].class, arity);
@@ -200,6 +192,25 @@ final class FunctionSupport {
       }
     }
 
+    private static final MethodHandles.Lookup LOOKUP;
+    private static final MethodHandle FALLBACK, SAME_FUNCTION, SAME_CODE, CAPTURED_ARGS;
+    static {
+      var lookup = MethodHandles.lookup();
+      LOOKUP = lookup;
+      try {
+        FALLBACK = lookup.findVirtual(FunctionCallSite.class, "fallback",
+            MethodType.methodType(MethodHandle.class, Object.class));
+        SAME_FUNCTION = lookup.findStatic(FunctionCallSite.class, "sameFunction",
+            MethodType.methodType(boolean.class, PyFunction.class, Object.class));
+        SAME_CODE = lookup.findStatic(FunctionCallSite.class, "sameCode",
+            MethodType.methodType(boolean.class, PyFunction.Code.class, Object.class));
+        CAPTURED_ARGS = lookup.findVirtual(PyFunction.class, "capturedArgs",
+            MethodType.methodType(Object[].class));
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
+    }
+
     static CallSite call(MethodType type) {
       return new FunctionSupport.FunctionCallSite(type);
     }
@@ -237,71 +248,82 @@ final class FunctionSupport {
         return target;
       }
 
-      // 3. Let's compile if it has never been done
-      var  compiledEntry = getCompiledEntry(function);
+      var code = function.code;
+      MethodHandle target, test;
+      if (code.captureCount == 0) {
+        // 3a. No captured args, do a quick function check
+        test = SAME_FUNCTION.bindTo(function);
+        target = getCallSiteMH(function);
+      } else {
+        // 3b. captured args, do a code check
+        test = SAME_CODE.bindTo(code);
+        target = getEntry(code);
+      }
 
-      // 4. Let's bind captured arguments + self if it has never been done
-      var entry = getEntry(function, compiledEntry);
+      // 4. adapt to callsite: entry: (PyFunction self, args...) -> Object
+      var adapted = adapt(function, target, argc).asType(type());
 
-      // 5. Adapt to the callsite signature
-      var adapted = adapt(function, entry, argc).asType(type());
-
-      // 6. Install the inlining cache
-      var test = SAME_ENTRY.bindTo(entry);
+      // 5. Install the inlining cache
       var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
       return adapted;
     }
 
-    static MethodHandle getEntry(PyFunction function, MethodHandle compiledEntry) {
-      // We do not want to have more than one entry for the same function
-      // otherwise it may use several slots of the PIC
-      var entry = function.entry;  // volatile read
+    static MethodHandle getCallSiteMH(PyFunction function) {
+      var compiledEntry = getCompiledEntry(function.code);
+
+      var bound = compiledEntry.bindTo(function);
+      return MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
+    }
+
+    static MethodHandle getEntry(PyFunction.Code code) {
+      var entry = code.entry;
       if (entry != null) {
         return entry;
       }
-      var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
-      var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
-      entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
-      if (!PyFunction.ENTRY.compareAndSet(function, (MethodHandle) null, entry)) {
-        // loser, so we need to reload the field
-        return function.entry;  // volatile read
-      }
+      var compiledEntry = getCompiledEntry(code);
+
+      var captureCount = code.captureCount;
+      var spread = captureCount == 0
+          ? MethodHandles.dropArguments(compiledEntry, 0, Object[].class)
+          : compiledEntry.asSpreader(0, Object[].class, captureCount);     // (Object[], PyFunction, ...)
+      entry = MethodHandles.foldArguments(spread, CAPTURED_ARGS);
+      code.entry = entry;
       return entry;
     }
 
-    static MethodHandle getCompiledEntry(PyFunction function) {
+    static MethodHandle getCompiledEntry(PyFunction.Code code) {
       // We do not want to compile the function several times (synchronized + Double Check Locking)
-      var compiledEntry = function.compiledEntry;  // volatile read
+      var compiledEntry = code.compiledEntry;  // volatile read
       if (compiledEntry != null) {
         return compiledEntry;
       }
-      synchronized (function.compiledEntryCache) {
-        compiledEntry = function.compiledEntry;  // volatile read
+      synchronized (code) {
+        compiledEntry = code.compiledEntry;  // volatile read
         if (compiledEntry == null) {
           // try to find if there is already a cached compiled entry
-          compiledEntry = function.compiledEntryCache.compiledEntry;
-          if (compiledEntry == null) {
-            compiledEntry = compileBody(function.context, function.functionDef);
-            function.compiledEntryCache.compiledEntry = compiledEntry;
-          }
-          function.compiledEntry = compiledEntry;  // volatile write
+          compiledEntry = compileBody(code.context, code.functionDef);
+          code.compiledEntry = compiledEntry;  // volatile write
         }
         return compiledEntry;
       }
     }
 
-    private static Object[] capturedArgumentsAndSelf(PyFunction function) {
+    /*private static Object[] capturedArgumentsAndSelf(PyFunction function) {
       var capturedArgs = function.capturedArgs;
       var array = new Object[capturedArgs.length + 1];
       System.arraycopy(capturedArgs, 0, array, 0, capturedArgs.length);
       array[capturedArgs.length] = function;
       return array;
+    }*/
+
+    private static boolean sameFunction(PyFunction expected, Object callee) {
+      return callee == expected;
     }
 
-    private static boolean sameEntry(MethodHandle expected, Object callee) {
-      return callee instanceof PyFunction f && f.entry == expected;
+    private static boolean sameCode(PyFunction.Code expected, Object callee) {
+      return callee instanceof PyFunction f && f.code == expected;
     }
 
     private static MethodHandle compileBody(ModuleContext ctx, Stmt.FunctionDef def) {

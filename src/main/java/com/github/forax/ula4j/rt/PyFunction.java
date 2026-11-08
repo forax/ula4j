@@ -12,59 +12,67 @@ import static java.util.Objects.requireNonNull;
 /// A Python function. `entry` has the type `(PyFunction, Object x arity [, PyTuple rest]) -> Object`,
 /// with the captured values already bound.
 public final class PyFunction {
-  static final class CompiledEntryCache {
-    // compiledEntry should be accessed under a synchronized on the cache (this)
-    MethodHandle compiledEntry;
+  static final class Code {
+    /*static final VarHandle ENTRY;
+    static {
+      var lookup = MethodHandles.lookup();
+      try {
+        ENTRY = lookup.findVarHandle(PyFunction.class, "entry", MethodHandle.class)
+            .withInvokeExactBehavior();
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
+    }*/
 
-    // compiled entry but adapted to the signature (Object[] captureArgs, Object self, Object[] args)Object
+    final String name;  //FIXME use real Python qualified name
+    final List<String> parameters;
+    final boolean varargs;
+    final int captureCount;
+
+    final ModuleContext context;
+    final Stmt.FunctionDef functionDef;   // not compiled
+
+    // compiled (accessed under a lock on this)
+    volatile MethodHandle compiledEntry;
+
+    // compiled entry but adapted to signature (Object[] captureArgs, Object self, Object arg0, Object arg1, ...)
+    // used by closure (benign race)
+    MethodHandle entry;
+
+    // compiled entry but adapted to signature (Object[] captureArgs, Object self, Object[] args)Object
     // used by megamorphic callsites, access is racy but the process to create a thunkEntry is idempotent
     MethodHandle thunkEntry;
-  }
 
-  static final VarHandle ENTRY;
-  static {
-    var lookup = MethodHandles.lookup();
-    try {
-      ENTRY = lookup.findVarHandle(PyFunction.class, "entry", MethodHandle.class)
-          .withInvokeExactBehavior();
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError(e);
+    Code(String name, List<String> parameters, boolean varargs, int captureCount,
+               ModuleContext context, Stmt.FunctionDef functionDef) {
+      this.name = name;
+      this.parameters = parameters;
+      this.varargs = varargs;
+      this.captureCount = captureCount;
+      this.context = context;
+      this.functionDef = functionDef;
+      super();
     }
   }
 
-  private final String name;  //FIXME use real Python qualified name
-  private final List<String> parameters;
-  private final boolean varargs;
-
-  final ModuleContext context;
+  final Code code;
   final Object[] capturedArgs;
 
-  final CompiledEntryCache compiledEntryCache;
-  final Stmt.FunctionDef functionDef;   // not compiled
-  volatile MethodHandle compiledEntry;  // compiled (accessed under a lock on compiledEntryCache)
-  volatile MethodHandle entry;          // compiled + captured arguments (race + CAS)
-
-  PyFunction(String name, List<String> parameters, boolean varargs,
-             ModuleContext context, Stmt.FunctionDef functionDef, CompiledEntryCache compiledEntryCache,
-             Object[] capturedArgs) {
-    this.name = name;
-    this.parameters = parameters;
-    this.varargs = varargs;
-
-    this.context = context;
+  PyFunction(Code code, Object[] capturedArgs) {
+    this.code = code;
     this.capturedArgs = capturedArgs;
-    this.functionDef = functionDef;
-    this.compiledEntryCache = compiledEntryCache;
     super();
   }
 
-  public String name() { return name; }
-  public List<String> parameters() { return parameters; }
-  public int arity() { return parameters.size(); }
-  public boolean varargs() { return varargs; }
+  public String name() { return code.name; }
+  public List<String> parameters() { return code.parameters; }
+  public int arity() { return code.parameters.size(); }
+  public boolean varargs() { return code.varargs; }
+
+  Object[] capturedArgs() { return capturedArgs; }
 
   @Override
   public String toString() {
-    return "<function " + name + ">";
+    return "<function " + code.name + ">";
   }
 }

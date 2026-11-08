@@ -372,7 +372,7 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void everyExecutionOfANestedDefYieldsANewFunctionValue() {
+    public void nestedNonCapturingDefShareTheSameFunction() {
       // This may change in the future
       var module = run("""
           def make():
@@ -383,7 +383,7 @@ public final class FunctionSupportTest {
           b = make()
           r = a() + b()
           """);
-      assertNotSame(module.getGlobal("a"), module.getGlobal("b"));
+      assertSame(module.getGlobal("a"), module.getGlobal("b"));
       assertGlobal(module, "r", 2L);
     }
 
