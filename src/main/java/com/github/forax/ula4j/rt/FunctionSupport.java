@@ -78,7 +78,7 @@ final class FunctionSupport {
 
       if (captureCount == 0) {
         var function = new PyFunction(code, EMPTY_CAPTURED_ARGS);
-        return new ConstantCallSite(MethodHandles.constant(type.returnType(), function));
+        return new ConstantCallSite(MethodHandles.constant(Object.class, function));
       }
 
       var factory = PY_FUNCTION.bindTo(code);
