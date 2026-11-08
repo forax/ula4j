@@ -265,7 +265,7 @@ final class FunctionSupport {
       var bound = MethodHandles.insertArguments(compiledEntry, 0, capturedArgumentsAndSelf);
       entry = MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
       if (!PyFunction.ENTRY.compareAndSet(function, (MethodHandle) null, entry)) {
-        // looser, so we need to reload the field
+        // loser, so we need to reload the field
         return function.entry;  // volatile read
       }
       return entry;
