@@ -95,14 +95,14 @@ final class FunctionSupport {
   /// Each site owns a bounded chain of guards on the entry of the callee.
   static final class FunctionCallSite extends MutableCallSite {
     private static final MethodHandles.Lookup LOOKUP;
-    private static final MethodHandle FALLBACK, SAME_COMPILED_ENTRY;
+    private static final MethodHandle FALLBACK, SAME_ENTRY;
     static {
       var lookup = MethodHandles.lookup();
       LOOKUP = lookup;
       try {
         FALLBACK = lookup.findVirtual(FunctionCallSite.class, "fallback",
             MethodType.methodType(MethodHandle.class, Object.class));
-        SAME_COMPILED_ENTRY = lookup.findStatic(FunctionCallSite.class, "sameCompiledEntry",
+        SAME_ENTRY = lookup.findStatic(FunctionCallSite.class, "sameEntry",
             MethodType.methodType(boolean.class, MethodHandle.class, Object.class));
       } catch (NoSuchMethodException | IllegalAccessException e) {
         throw new AssertionError(e);
@@ -208,7 +208,7 @@ final class FunctionSupport {
         root.setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), Megamorphic.MEGAMORPHIC.bindTo(type())));
         return adapted;
       }*/
-      var test = SAME_COMPILED_ENTRY.bindTo(compiledEntry);
+      var test = SAME_ENTRY.bindTo(entry);
       var fallback = new FunctionCallSite(type(), context, root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
@@ -223,8 +223,8 @@ final class FunctionSupport {
       return array;
     }
 
-    private static boolean sameCompiledEntry(MethodHandle expected, Object callee) {
-      return callee instanceof PyFunction f && f.compiledEntry == expected;
+    private static boolean sameEntry(MethodHandle expected, Object callee) {
+      return callee instanceof PyFunction f && f.entry == expected;
     }
 
     private static MethodHandle compileBody(ModuleContext ctx, Stmt.FunctionDef def) {
