@@ -109,23 +109,68 @@ final class FunctionSupport {
       }
     }
 
-    private static final class Megamorphic {
+    private final class Megamorphic {
       static final MethodHandle MEGAMORPHIC;
       static {
         var lookup = MethodHandles.lookup();
         try {
-          MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
-              MethodType.methodType(MethodHandle.class, MethodType.class, Object.class));;
+          MEGAMORPHIC = lookup.findVirtual(Megamorphic.class, "megamorphic",
+              MethodType.methodType(Object.class, Object.class, Object[].class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
         }
       }
 
-      static MethodHandle megamorphic(MethodType type, Object callee) {
+      Object megamorphic(Object callee, Object[] args) throws Throwable {
         var function = asFunction(callee);
-        var entry = function.entry;
-        var argc = type.parameterCount() - 1;
-        return adapt(function, entry, argc).asType(type);
+
+        // 1. Let's compile if it has never been done
+        var compiledEntry = getCompiledEntry(function);
+
+        if (!function.varargs()) {
+          // 2. Verify exact arity for standard functions
+          if (args.length != function.arity()) {
+            throw arityError(function, args.length);
+          }
+
+          // 3. Calculate exact length: captured args + self + provided args
+          var capturedArgs = function.capturedArgs;
+          var arguments = new Object[capturedArgs.length + 1 + args.length];
+
+          // 4. Populate the arguments array
+          System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
+          arguments[capturedArgs.length] = function; // self reference
+          System.arraycopy(args, 0, arguments, capturedArgs.length + 1, args.length);
+
+          return compiledEntry.invokeWithArguments(arguments);
+        }
+
+        return megamorphicVarargs(function, compiledEntry, args);
+      }
+
+      Object megamorphicVarargs(PyFunction function, MethodHandle compiledEntry, Object[] args) throws Throwable {
+        // 2. Verify minimum arity for varargs functions
+        var arity = function.arity();
+        if (args.length < arity) {
+          throw arityError(function, args.length);
+        }
+
+        // 3. Calculate exact length: captured args + self + fixed args + 1 (for the rest tuple)
+        var capturedArgs = function.capturedArgs;
+        var arguments = new Object[capturedArgs.length + 1 + arity + 1];
+
+        // 4. Populate the fixed arguments
+        System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
+        arguments[capturedArgs.length] = function; // self reference
+        System.arraycopy(args, 0, arguments, capturedArgs.length + 1, arity);
+
+        // 5. Pack the remaining arguments into a PyTuple
+        var restLength = args.length - arity;
+        var restArgs = new Object[restLength];
+        System.arraycopy(args, arity, restArgs, 0, restLength);
+        arguments[arguments.length - 1] = TupleIntrinsics.fromArray(restArgs);
+
+        return compiledEntry.invokeWithArguments(arguments);
       }
     }
 
@@ -172,24 +217,19 @@ final class FunctionSupport {
     MethodHandle fallback(Object callee) {
       var function = asFunction(callee);
 
-      MethodHandle compiledEntry;
-      // We do not want to compile the function several times, so synchronized block
-      synchronized (function.compiledEntryCache) {
+      // 1. Let's compile if it has never been done
+      var  compiledEntry = getCompiledEntry(function);
 
-        // 1. Let's compile if it has never been done
-        compiledEntry = function.compiledEntry;
-        if (compiledEntry == null) {
-          // try to find if there is already a cached compiled entry
-          compiledEntry = function.compiledEntryCache.compiledEntry();
-          if (compiledEntry == null) {
-            compiledEntry = compileBody(context, function.functionDef);
-            function.compiledEntryCache.compiledEntry(compiledEntry);
-          }
-          function.compiledEntry = compiledEntry;
-        }
+      // 2. If megamorphic
+      var argc = type().parameterCount() - 1;
+      if (depth == MAX_DEPTH) {
+        var target = Megamorphic.MEGAMORPHIC.bindTo(new Megamorphic())
+            .asCollector(Object[].class, argc);
+        root.setTarget(target);
+        return target;
       }
 
-      // 2. Let's bind captured arguments + self if it has never been done
+      // 3. Let's bind captured arguments + self if it has never been done
       // function.entry acts as a cache, we may have several versions but this is idempotent
       var entry = function.entry;
       if (entry == null) {
@@ -199,20 +239,32 @@ final class FunctionSupport {
         function.entry = entry;
       }
 
-      // 3. Adapt to the callsite signature
-      var argc = type().parameterCount() - 1;
+      // 4. Adapt to the callsite signature
       var adapted = adapt(function, entry, argc).asType(type());
 
-      // 4. Install the inlining cache
-      /*if (depth >= MAX_DEPTH) {
-        root.setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), Megamorphic.MEGAMORPHIC.bindTo(type())));
-        return adapted;
-      }*/
+      // 5. Install the inlining cache
       var test = SAME_ENTRY.bindTo(entry);
       var fallback = new FunctionCallSite(type(), context, root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
       return adapted;
+    }
+
+    MethodHandle getCompiledEntry(PyFunction function) {
+      // We do not want to compile the function several times, so synchronized block
+      synchronized (function.compiledEntryCache) {
+        var compiledEntry = function.compiledEntry;
+        if (compiledEntry == null) {
+          // try to find if there is already a cached compiled entry
+          compiledEntry = function.compiledEntryCache.compiledEntry();
+          if (compiledEntry == null) {
+            compiledEntry = compileBody(context, function.functionDef);
+            function.compiledEntryCache.compiledEntry(compiledEntry);
+          }
+          function.compiledEntry = compiledEntry;
+        }
+        return compiledEntry;
+      }
     }
 
     private static Object[] capturedArgumentsAndSelf(PyFunction function) {
