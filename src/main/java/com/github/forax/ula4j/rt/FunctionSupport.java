@@ -118,38 +118,32 @@ final class FunctionSupport {
       static Object megamorphic(Object callee, Object[] args) throws Throwable {
         var function = asFunction(callee);
 
-        // 1. Let's compile if it has never been done
+        // 1. Check arity
+        var argc = args.length;
+        checkArity(function, argc);
+
+        // 2. Let's compile if it has never been done
         var compiledEntry = getCompiledEntry(function);
 
         if (function.varargs()) {
           return megamorphicVarargs(function, compiledEntry, args);
         }
 
-        // 2. Verify exact arity for standard functions
-        if (args.length != function.arity()) {
-          throw arityError(function, args.length);
-        }
-
         // 3. Calculate exact length: captured args + self + provided args
         var capturedArgs = function.capturedArgs;
-        var arguments = new Object[capturedArgs.length + 1 + args.length];
+        var arguments = new Object[capturedArgs.length + 1 + argc];
 
         // 4. Populate the arguments array
         System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
         arguments[capturedArgs.length] = function; // self reference
-        System.arraycopy(args, 0, arguments, capturedArgs.length + 1, args.length);
+        System.arraycopy(args, 0, arguments, capturedArgs.length + 1, argc);
 
         return compiledEntry.invokeWithArguments(arguments);
       }
 
       static Object megamorphicVarargs(PyFunction function, MethodHandle compiledEntry, Object[] args) throws Throwable {
-        // 2. Verify minimum arity for varargs functions
-        var arity = function.arity();
-        if (args.length < arity) {
-          throw arityError(function, args.length);
-        }
-
         // 3. Calculate exact length: captured args + self + fixed args + 1 (for the rest tuple)
+        var arity = function.arity();
         var capturedArgs = function.capturedArgs;
         var arguments = new Object[capturedArgs.length + 1 + arity + 1];
 
@@ -211,18 +205,21 @@ final class FunctionSupport {
     MethodHandle fallback(Object callee) {
       var function = asFunction(callee);
 
-      // 1. If megamorphic
+      // 1. If wrong arity
       var argc = type().parameterCount() - 1;
+      checkArity(function, argc);
+
+      // 2. If megamorphic
       if (depth == MAX_DEPTH) {
         var target = Megamorphic.MEGAMORPHIC.asCollector(Object[].class, argc);
         root.setTarget(target);
         return target;
       }
 
-      // 2. Let's compile if it has never been done
+      // 3. Let's compile if it has never been done
       var  compiledEntry = getCompiledEntry(function);
 
-      // 3. Let's bind captured arguments + self if it has never been done
+      // 4. Let's bind captured arguments + self if it has never been done
       // function.entry acts as a cache, we may have several versions but this is idempotent
       var entry = function.entry;
       if (entry == null) {
@@ -232,10 +229,10 @@ final class FunctionSupport {
         function.entry = entry;
       }
 
-      // 4. Adapt to the callsite signature
+      // 5. Adapt to the callsite signature
       var adapted = adapt(function, entry, argc).asType(type());
 
-      // 5. Install the inlining cache
+      // 6. Install the inlining cache
       var test = SAME_ENTRY.bindTo(entry);
       var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
@@ -307,18 +304,23 @@ final class FunctionSupport {
       throw new PyTypeError("'" + IntrinsicSupport.typeName(callee) + "' object is not callable");
     }
 
-    /// Adapts the entry to `(PyFunction, Object x argc) -> Object`, or raises the TypeError CPython raises.
-    private static MethodHandle adapt(PyFunction function, MethodHandle entry, int argc) {
+    private static void checkArity(PyFunction function, int argc) {
       var arity = function.arity();
-      if (!function.varargs()) {
-        if (argc != arity) {
+      if (function.varargs()) {
+        if (argc < arity) {
           throw arityError(function, argc);
         }
-        return entry;  // exact arity: no adaptation at all
-      }
-      if (argc < arity) {
+      } else if (argc != arity) {
         throw arityError(function, argc);
       }
+    }
+
+    /// Adapts the entry to `(PyFunction, Object x argc) -> Object`.
+    private static MethodHandle adapt(PyFunction function, MethodHandle entry, int argc) {
+      if (!function.varargs()) {
+        return entry;  // exact arity: no adaptation at all
+      }
+      var arity = function.arity();
       var packer = RestAdapter.FROM_ARRAY.asCollector(Object[].class, argc - arity);  // (Object x extra) -> PyTuple
       return MethodHandles.collectArguments(entry, arity + 1, packer);
     }
