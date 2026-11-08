@@ -13,6 +13,10 @@ public final class PyFunction {
   static final class CompiledEntryCache {
     // compiledEntry should be accessed under a synchronized on the cache (this)
     MethodHandle compiledEntry;
+
+    // compiled entry but adapted to the signature (Object[] captureArgs, Object self, Object[] args)Object
+    // used by megamorphic callsites, access is racy but the process to create a thunkEntry is idempotent
+    MethodHandle thunkEntry;
   }
 
   private final String name;  //FIXME use real Python qualified name

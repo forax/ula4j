@@ -16,6 +16,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
+import java.util.Arrays;
 import java.util.List;
 
 /// Implementation of the `def` / global bootstraps and of the lazy compilation of function bodies.
@@ -104,12 +105,15 @@ final class FunctionSupport {
         throw new AssertionError();
       }
 
-      static final MethodHandle MEGAMORPHIC;
+      static final MethodHandle MEGAMORPHIC, ARRAY_ELEMENT, REST_TUPLE;
       static {
         var lookup = MethodHandles.lookup();
+        ARRAY_ELEMENT = MethodHandles.arrayElementGetter(Object[].class);
         try {
           MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
               MethodType.methodType(Object.class, Object.class, Object[].class));
+          REST_TUPLE = lookup.findStatic(Megamorphic.class, "restTuple",
+              MethodType.methodType(PyTuple.class, Object[].class, int.class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
         }
@@ -117,50 +121,58 @@ final class FunctionSupport {
 
       static Object megamorphic(Object callee, Object[] args) throws Throwable {
         var function = asFunction(callee);
-
-        // 1. Check arity
-        var argc = args.length;
-        checkArity(function, argc);
-
-        // 2. Let's compile if it has never been done
-        var compiledEntry = getCompiledEntry(function);
-
-        if (function.varargs()) {
-          return megamorphicVarargs(function, compiledEntry, args);
-        }
-
-        // 3. Calculate exact length: captured args + self + provided args
-        var capturedArgs = function.capturedArgs;
-        var capturedLength = capturedArgs.length;
-        var arguments = new Object[capturedLength + 1 + argc];
-
-        // 4. Populate the arguments array
-        System.arraycopy(capturedArgs, 0, arguments, 0, capturedLength);
-        arguments[capturedLength] = function; // self reference
-        System.arraycopy(args, 0, arguments, capturedLength + 1, argc);
-
-        return compiledEntry.invokeWithArguments(arguments);
+        checkArity(function, args.length);
+        var thunkEntry = getThunkEntry(function);
+        return thunkEntry.invokeExact(function.capturedArgs, function, args);
       }
 
-      static Object megamorphicVarargs(PyFunction function, MethodHandle compiledEntry, Object[] args) throws Throwable {
-        // 3. Calculate exact length: captured args + self + fixed args + 1 (for the rest tuple)
-        var arity = function.arity();
-        var capturedArgs = function.capturedArgs;
-        var capturedLength = capturedArgs.length;
-        var arguments = new Object[capturedLength + 1 + arity + 1];
+      private static MethodHandle getThunkEntry(PyFunction function) {
+        var cache = function.compiledEntryCache;
+        var thunkEntry = cache.thunkEntry;
+        if (thunkEntry == null) {
+          var compiledEntry = getCompiledEntry(function);
+          thunkEntry = createThunk(compiledEntry, function.capturedArgs.length, function.arity(), function.varargs());
+          cache.thunkEntry = thunkEntry;
+        }
+        return thunkEntry;
+      }
 
-        // 4. Populate the fixed arguments
-        System.arraycopy(capturedArgs, 0, arguments, 0, capturedLength);
-        arguments[capturedLength] = function; // self reference
-        System.arraycopy(args, 0, arguments, capturedLength + 1, arity);
+      private static MethodHandle createThunk(MethodHandle compiledEntry, int captureCount, int arity, boolean varargs) {
+        // 1. Spread captured arguments.
+        var handle = captureCount == 0
+            ? MethodHandles.dropArguments(compiledEntry, 0, Object[].class)
+            : compiledEntry.asSpreader(0, Object[].class, captureCount);
 
-        // 5. Pack the remaining arguments into a PyTuple
-        var restLength = args.length - arity;
-        var restArgs = new Object[restLength];
-        System.arraycopy(args, arity, restArgs, 0, restLength);
-        arguments[arguments.length - 1] = TupleIntrinsics.fromArray(restArgs);
+        // 2. Ordinary function: spread positional arguments.
+        if (!varargs) {
+          return arity == 0
+              ? MethodHandles.dropArguments(handle, 2, Object[].class)
+              : handle.asSpreader(2, Object[].class, arity);
+        }
 
-        return compiledEntry.invokeWithArguments(arguments);
+        // 3. Varargs function: extract fixed arguments and pack the rest.
+        var filters = new MethodHandle[arity + 1];
+        for (var i = 0; i < arity; i++) {
+          filters[i] = MethodHandles.insertArguments(ARRAY_ELEMENT, 1, i);
+        }
+        filters[arity] = MethodHandles.insertArguments(REST_TUPLE, 1, arity);
+        var filtered = MethodHandles.filterArguments(handle, 2, filters);
+
+        // 4. All filters consume the same Object[] args.
+        // Collapse their repeated arguments into a single parameter.
+        var type = MethodType.methodType(
+            Object.class, Object[].class, PyFunction.class, Object[].class);
+
+        var reorder = new int[filtered.type().parameterCount()];
+        reorder[0] = 0;  // capturedArgs
+        reorder[1] = 1;  // self
+        Arrays.fill(reorder, 2, reorder.length, 2);  // args
+
+        return MethodHandles.permuteArguments(filtered, type, reorder);
+      }
+
+      private static PyTuple restTuple(Object[] args, int start) {
+        return TupleIntrinsics.fromArray(Arrays.copyOfRange(args, start, args.length));
       }
     }
 
