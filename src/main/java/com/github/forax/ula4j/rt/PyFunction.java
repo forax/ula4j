@@ -11,6 +11,7 @@ import static java.util.Objects.requireNonNull;
 /// with the captured values already bound.
 public final class PyFunction {
   static final class CompiledEntryCache {
+    // compiledEntry should be accessed under a synchronized on the cache (this)
     MethodHandle compiledEntry;
   }
 
@@ -23,7 +24,7 @@ public final class PyFunction {
 
   final CompiledEntryCache compiledEntryCache;
   final Stmt.FunctionDef functionDef;   // not compiled
-  MethodHandle compiledEntry;           // compiled (should be read under a lock on compiledEntryCache)
+  volatile MethodHandle compiledEntry;  // compiled (should be read under a lock on compiledEntryCache)
   MethodHandle entry;                   // compiled + captured arguments (racy access are ok)
 
   PyFunction(String name, List<String> parameters, boolean varargs,

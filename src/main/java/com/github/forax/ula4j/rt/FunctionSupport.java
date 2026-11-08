@@ -244,9 +244,13 @@ final class FunctionSupport {
     }
 
     static MethodHandle getCompiledEntry(PyFunction function) {
-      // We do not want to compile the function several times, so synchronized block
+      // We do not want to compile the function several times, so synchronized block + Double Check Locking
+      var compiledEntry = function.compiledEntry;  // volatile read
+      if (compiledEntry != null) {
+        return compiledEntry;
+      }
       synchronized (function.compiledEntryCache) {
-        var compiledEntry = function.compiledEntry;
+        compiledEntry = function.compiledEntry;  // volatile read
         if (compiledEntry == null) {
           // try to find if there is already a cached compiled entry
           compiledEntry = function.compiledEntryCache.compiledEntry;
@@ -254,7 +258,7 @@ final class FunctionSupport {
             compiledEntry = compileBody(function.context, function.functionDef);
             function.compiledEntryCache.compiledEntry = compiledEntry;
           }
-          function.compiledEntry = compiledEntry;
+          function.compiledEntry = compiledEntry;  // volatile write
         }
         return compiledEntry;
       }
