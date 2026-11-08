@@ -214,10 +214,7 @@ final class FunctionSupport {
     MethodHandle fallback(Object callee) {
       var function = asFunction(callee);
 
-      // 1. Let's compile if it has never been done
-      var  compiledEntry = getCompiledEntry(function, context);
-
-      // 2. If megamorphic
+      // 1. If megamorphic
       var argc = type().parameterCount() - 1;
       if (depth == MAX_DEPTH) {
         var target = Megamorphic.MEGAMORPHIC.bindTo(context)
@@ -225,6 +222,9 @@ final class FunctionSupport {
         root.setTarget(target);
         return target;
       }
+
+      // 2. Let's compile if it has never been done
+      var  compiledEntry = getCompiledEntry(function, context);
 
       // 3. Let's bind captured arguments + self if it has never been done
       // function.entry acts as a cache, we may have several versions but this is idempotent
