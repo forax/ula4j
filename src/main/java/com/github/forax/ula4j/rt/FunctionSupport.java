@@ -105,7 +105,8 @@ final class FunctionSupport {
         throw new AssertionError();
       }
 
-      static final MethodHandle MEGAMORPHIC, ARRAY_ELEMENT, REST_TUPLE;
+      static final MethodHandle MEGAMORPHIC;
+      private static final MethodHandle ARRAY_ELEMENT, REST_TUPLE;
       static {
         var lookup = MethodHandles.lookup();
         ARRAY_ELEMENT = MethodHandles.arrayElementGetter(Object[].class);
@@ -129,22 +130,29 @@ final class FunctionSupport {
       private static MethodHandle getThunkEntry(PyFunction function) {
         var cache = function.compiledEntryCache;
         var thunkEntry = cache.thunkEntry;
-        if (thunkEntry == null) {
-          var compiledEntry = getCompiledEntry(function);
-          thunkEntry = createThunk(compiledEntry, function.capturedArgs.length, function.arity(), function.varargs());
-          cache.thunkEntry = thunkEntry;
+        if (thunkEntry != null) {
+          return thunkEntry;
         }
+        return computeThunkEntry(function, cache);
+      }
+
+      private static MethodHandle computeThunkEntry(PyFunction function, PyFunction.CompiledEntryCache cache) {
+        var compiledEntry = getCompiledEntry(function);
+        var thunkEntry = createThunk(compiledEntry, function);
+        cache.thunkEntry = thunkEntry;
         return thunkEntry;
       }
 
-      private static MethodHandle createThunk(MethodHandle compiledEntry, int captureCount, int arity, boolean varargs) {
+      private static MethodHandle createThunk(MethodHandle compiledEntry, PyFunction function) {
         // 1. Spread captured arguments.
+        var captureCount = function.capturedArgs.length;
         var handle = captureCount == 0
             ? MethodHandles.dropArguments(compiledEntry, 0, Object[].class)
             : compiledEntry.asSpreader(0, Object[].class, captureCount);
 
         // 2. Ordinary function: spread positional arguments.
-        if (!varargs) {
+        var arity = function.arity();
+        if (!function.varargs()) {
           return arity == 0
               ? MethodHandles.dropArguments(handle, 2, Object[].class)
               : handle.asSpreader(2, Object[].class, arity);
@@ -158,8 +166,7 @@ final class FunctionSupport {
         filters[arity] = MethodHandles.insertArguments(REST_TUPLE, 1, arity);
         var filtered = MethodHandles.filterArguments(handle, 2, filters);
 
-        // 4. All filters consume the same Object[] args.
-        // Collapse their repeated arguments into a single parameter.
+        // 4. Spread all args using permuteArguments
         var type = MethodType.methodType(
             Object.class, Object[].class, PyFunction.class, Object[].class);
 
@@ -234,7 +241,7 @@ final class FunctionSupport {
       var  compiledEntry = getCompiledEntry(function);
 
       // 4. Let's bind captured arguments + self if it has never been done
-      // function.entry acts as a cache, we may have several versions but this is idempotent
+      // function.entry acts as a cache
       var entry = function.entry;
       if (entry == null) {
         var capturedArgumentsAndSelf = capturedArgumentsAndSelf(function);
