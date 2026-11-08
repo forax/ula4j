@@ -24,7 +24,6 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import static org.objectweb.asm.Opcodes.*;
@@ -174,7 +173,7 @@ public final class BytecodeGenerator {
         return "java/lang/Object";  // never load a class, every merged value is used as an Object
       }
     };
-    cw.visit(V21, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalName, null, "java/lang/Object", null);
+    cw.visit(V25, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalName, null, "java/lang/Object", null);
     cw.visitSource("script", null);
     return cw;
   }
@@ -274,7 +273,7 @@ public final class BytecodeGenerator {
 
     private void truthy() { intrinsic(TRUTHINESS, "$truthy$", UNARY_BOOL); }
 
-    private void box() {
+    private void boxBoolean() {
       mv.visitMethodInsn(INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
     }
 
@@ -292,11 +291,13 @@ public final class BytecodeGenerator {
       var slot = slots.get(name);
       if (slot != null) {
         mv.visitVarInsn(ALOAD, slot);
-      } else if (function != null && name.equals(function.name()) && frees.contains(name)) {
-        mv.visitVarInsn(ALOAD, selfSlot);  // a nested function refers to itself through self
-      } else {
-        mv.visitInvokeDynamicInsn("getGlobal", "()" + O, BSM_GET_GLOBAL, name);
+        return;
       }
+      if (function != null && name.equals(function.name()) && frees.contains(name)) {
+        mv.visitVarInsn(ALOAD, selfSlot);  // a nested function refers to itself through self
+        return;
+      }
+      mv.visitInvokeDynamicInsn("getGlobal", "()" + O, BSM_GET_GLOBAL, name);
     }
 
     /// Stores the value on top of the stack.
@@ -304,11 +305,13 @@ public final class BytecodeGenerator {
       var slot = slots.get(name);
       if (slot != null) {
         mv.visitVarInsn(ASTORE, slot);
-      } else if (function == null) {
-        mv.visitInvokeDynamicInsn("setGlobal", "(" + O + ")V", BSM_SET_GLOBAL, name);
-      } else {
-        throw new IllegalStateException("'" + name + "' is not a local of '" + function.name() + "'");
+        return;
       }
+      if (function == null) {
+        mv.visitInvokeDynamicInsn("setGlobal", "(" + O + ")V", BSM_SET_GLOBAL, name);
+        return;
+      }
+      throw new AssertionError("'" + name + "' is not a local of '" + function.name() + "'");
     }
 
     private void storeTarget(Target target) {
@@ -371,7 +374,7 @@ public final class BytecodeGenerator {
           storeName(n.id());
         }
         case Target.SubscriptTarget t -> throw unsupported("subscript augmented assignment", t.line(), t.column());
-        case Target.TupleTarget t -> throw new AssertionError("augassign tuple target");
+        case Target.TupleTarget t -> throw new AssertionError("augmented assign tuple target");
       }
     }
 
@@ -555,7 +558,7 @@ public final class BytecodeGenerator {
         expr(c.first());
         expr(c.rest().getFirst());
         compareOp(c.ops().getFirst());
-        box();
+        boxBoolean();
         return;
       }
       var onFalse = new Label();
@@ -600,7 +603,7 @@ public final class BytecodeGenerator {
         case Expr.Not n -> {
           expr(n.operand());
           intrinsic(TRUTHINESS, "$not$", UNARY_BOOL);
-          box();
+          boxBoolean();
         }
         case Expr.And a -> shortCircuit(a.left(), a.right(), IFEQ);
         case Expr.Or o -> shortCircuit(o.left(), o.right(), IFNE);
