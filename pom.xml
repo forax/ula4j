@@ -181,7 +181,7 @@
                         <artifactId>exec-maven-plugin</artifactId>
                         <version>3.3.0</version>
                         <executions>
-                            <execution>
+                            <!-- execution>
                                 <id>extract-python</id>
                                 <phase>initialize</phase>
                                 <goals><goal>exec</goal></goals>
@@ -206,7 +206,7 @@
                                         <argument>${project.build.directory}/micropython/tests/basics</argument>
                                     </arguments>
                                 </configuration>
-                            </execution>
+                            </execution -->
                         </executions>
                     </plugin>
 
