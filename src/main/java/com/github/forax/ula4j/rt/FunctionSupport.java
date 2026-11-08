@@ -109,46 +109,50 @@ final class FunctionSupport {
       }
     }
 
-    private final class Megamorphic {
+    private static final class Megamorphic {
+      private Megamorphic() {
+        throw new AssertionError();
+      }
+
       static final MethodHandle MEGAMORPHIC;
       static {
         var lookup = MethodHandles.lookup();
         try {
-          MEGAMORPHIC = lookup.findVirtual(Megamorphic.class, "megamorphic",
-              MethodType.methodType(Object.class, Object.class, Object[].class));
+          MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
+              MethodType.methodType(Object.class, ModuleContext.class, Object.class, Object[].class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
         }
       }
 
-      Object megamorphic(Object callee, Object[] args) throws Throwable {
+      static Object megamorphic(ModuleContext context, Object callee, Object[] args) throws Throwable {
         var function = asFunction(callee);
 
         // 1. Let's compile if it has never been done
-        var compiledEntry = getCompiledEntry(function);
+        var compiledEntry = getCompiledEntry(function, context);
 
-        if (!function.varargs()) {
-          // 2. Verify exact arity for standard functions
-          if (args.length != function.arity()) {
-            throw arityError(function, args.length);
-          }
-
-          // 3. Calculate exact length: captured args + self + provided args
-          var capturedArgs = function.capturedArgs;
-          var arguments = new Object[capturedArgs.length + 1 + args.length];
-
-          // 4. Populate the arguments array
-          System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
-          arguments[capturedArgs.length] = function; // self reference
-          System.arraycopy(args, 0, arguments, capturedArgs.length + 1, args.length);
-
-          return compiledEntry.invokeWithArguments(arguments);
+        if (function.varargs()) {
+          return megamorphicVarargs(function, compiledEntry, args);
         }
 
-        return megamorphicVarargs(function, compiledEntry, args);
+        // 2. Verify exact arity for standard functions
+        if (args.length != function.arity()) {
+          throw arityError(function, args.length);
+        }
+
+        // 3. Calculate exact length: captured args + self + provided args
+        var capturedArgs = function.capturedArgs;
+        var arguments = new Object[capturedArgs.length + 1 + args.length];
+
+        // 4. Populate the arguments array
+        System.arraycopy(capturedArgs, 0, arguments, 0, capturedArgs.length);
+        arguments[capturedArgs.length] = function; // self reference
+        System.arraycopy(args, 0, arguments, capturedArgs.length + 1, args.length);
+
+        return compiledEntry.invokeWithArguments(arguments);
       }
 
-      Object megamorphicVarargs(PyFunction function, MethodHandle compiledEntry, Object[] args) throws Throwable {
+      static Object megamorphicVarargs(PyFunction function, MethodHandle compiledEntry, Object[] args) throws Throwable {
         // 2. Verify minimum arity for varargs functions
         var arity = function.arity();
         if (args.length < arity) {
@@ -175,6 +179,10 @@ final class FunctionSupport {
     }
 
     private static final class RestAdapter {
+      private RestAdapter() {
+        throw new AssertionError();
+      }
+
       private static final MethodHandle FROM_ARRAY;
       static {
         var lookup = MethodHandles.lookup();
@@ -218,12 +226,12 @@ final class FunctionSupport {
       var function = asFunction(callee);
 
       // 1. Let's compile if it has never been done
-      var  compiledEntry = getCompiledEntry(function);
+      var  compiledEntry = getCompiledEntry(function, context);
 
       // 2. If megamorphic
       var argc = type().parameterCount() - 1;
       if (depth == MAX_DEPTH) {
-        var target = Megamorphic.MEGAMORPHIC.bindTo(new Megamorphic())
+        var target = Megamorphic.MEGAMORPHIC.bindTo(context)
             .asCollector(Object[].class, argc);
         root.setTarget(target);
         return target;
@@ -250,7 +258,7 @@ final class FunctionSupport {
       return adapted;
     }
 
-    MethodHandle getCompiledEntry(PyFunction function) {
+    static MethodHandle getCompiledEntry(PyFunction function, ModuleContext context) {
       // We do not want to compile the function several times, so synchronized block
       synchronized (function.compiledEntryCache) {
         var compiledEntry = function.compiledEntry;
