@@ -14,6 +14,8 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/// failsafe maven plugin is not yet activate on this repository
+/// You have to run this conformance test by hand (this is the early days, do not expect a miracle)
 public final class ConformanceTestIT {
 
     private static final Path BASICS_DIR = Path.of("target/test-classes/basics");
