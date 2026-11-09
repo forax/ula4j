@@ -240,7 +240,7 @@ final class FunctionSupport {
       if (code.captureCount == 0) {
         // 3a. No captured args, do a quick function check
         test = SAME_FUNCTION.bindTo(function);
-        target = getCallSiteMH(function);
+        target = getNoCaptureMH(function);
       } else {
         // 3b. captured args, do a code check
         test = SAME_CODE.bindTo(code);
@@ -257,7 +257,7 @@ final class FunctionSupport {
       return adapted;
     }
 
-    static MethodHandle getCallSiteMH(PyFunction function) {
+    static MethodHandle getNoCaptureMH(PyFunction function) {
       var compiledEntry = getCompiledEntry(function.code);
 
       var bound = compiledEntry.bindTo(function);
