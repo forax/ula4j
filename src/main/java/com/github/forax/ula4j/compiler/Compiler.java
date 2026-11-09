@@ -3,7 +3,7 @@ package com.github.forax.ula4j.compiler;
 import com.github.forax.ula4j.ast.ASTBuilder;
 import com.github.forax.ula4j.ast.Script;
 import com.github.forax.ula4j.rt.Dictionary;
-import com.github.forax.ula4j.rt.ModuleClassLoader;
+import com.github.forax.ula4j.rt.FunctionClassLoader;
 import com.github.forax.ula4j.rt.ModuleContext;
 
 import java.lang.invoke.MethodHandle;
@@ -22,7 +22,7 @@ public final class Compiler {
     var internalName = "com/github/forax/ula4j/gen/Script";
     var dictionary = new Dictionary();
     var bytes = BytecodeGenerator.generateScript(ctx, dictionary, script, internalName);
-    var loader = new ModuleClassLoader(ctx, dictionary);
+    var loader = new FunctionClassLoader(ctx, dictionary);
     var cls = loader.define(internalName.replace('/', '.'), bytes);
     try {
       return LOOKUP.findStatic(cls, "__main__", MethodType.methodType(void.class));

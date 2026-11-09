@@ -1,13 +1,13 @@
 package com.github.forax.ula4j.rt;
 
-public final class ModuleClassLoader extends ClassLoader {
+public final class FunctionClassLoader extends ClassLoader {
   private final ModuleContext context;
   private final Dictionary dictionary;
 
-  public ModuleClassLoader(ModuleContext context, Dictionary dictionary) {
+  public FunctionClassLoader(ModuleContext context, Dictionary dictionary) {
     this.context = context;
     this.dictionary = dictionary;
-    super(ModuleClassLoader.class.getClassLoader());
+    super();
   }
 
   public ModuleContext context() { return context; }

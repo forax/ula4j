@@ -6,10 +6,7 @@ import com.github.forax.ula4j.ast.Stmt;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.util.CheckClassAdapter;
 
-import java.io.PrintWriter;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
@@ -39,12 +36,12 @@ final class FunctionSupport {
   // ---- globals
 
   static CallSite getGlobal(MethodHandles.Lookup lookup, String name) {
-    var cell = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
+    var cell = ((FunctionClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
     return new ConstantCallSite(CELL_GET.bindTo(cell));
   }
 
   static CallSite setGlobal(MethodHandles.Lookup lookup, String name) {
-    var cell = ((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
+    var cell = ((FunctionClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
     return new ConstantCallSite(CELL_SET.bindTo(cell));
   }
 
@@ -65,7 +62,7 @@ final class FunctionSupport {
     private static final Object[] EMPTY_CAPTURED_ARGS = new Object[0];
 
     static CallSite def(MethodHandles.Lookup lookup, MethodType type, int astIndex) {
-      var moduleClassLoader = (ModuleClassLoader) lookup.lookupClass().getClassLoader();
+      var moduleClassLoader = (FunctionClassLoader) lookup.lookupClass().getClassLoader();
       var context = moduleClassLoader.context();
       var dictionary = moduleClassLoader.dictionary();
       var def = dictionary.lookup(astIndex);
@@ -329,7 +326,7 @@ final class FunctionSupport {
       //CheckClassAdapter.verify(new ClassReader(bytes), true, new PrintWriter(System.err));
 
       var className = BytecodeGenerator.functionClassName(def).replace('/', '.');
-      var loader = new ModuleClassLoader(ctx, dictionary);
+      var loader = new FunctionClassLoader(ctx, dictionary);
       var clazz = loader.define(className, bytes);
       var captureCount = BytecodeGenerator.captureNames(def, scope.analysis()).size();
       var type = BytecodeGenerator.bodyType(captureCount, def.parameters().size(), def.rest().isPresent());
