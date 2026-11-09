@@ -206,7 +206,7 @@ final class FunctionSupport {
     }
 
     static CallSite call(MethodType type) {
-      return new FunctionSupport.FunctionCallSite(type);
+      return new FunctionSupport.FunctionCallSite(type, null, 0);
     }
 
     private static final int MAX_DEPTH = 4;
@@ -214,17 +214,10 @@ final class FunctionSupport {
     private final FunctionCallSite root;
     private final int depth;
 
-    FunctionCallSite(MethodType type) {
-      depth = 0;
-      super(type);
-      root = this;
-      setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
-    }
-
     private FunctionCallSite(MethodType type, FunctionCallSite root, int depth) {
-      this.root = root;
       this.depth = depth;
       super(type);
+      this.root = root == null ? this : root;
       setTarget(MethodHandles.foldArguments(MethodHandles.exactInvoker(type()), FALLBACK.bindTo(this)));
     }
 
