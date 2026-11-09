@@ -10,7 +10,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /// Everything a module owns: global cells, builtins, the registered functions and their compiled bodies.
-/// Generated code reaches it through `((ModuleClassLoader) lookup.lookupClass().getClassLoader()).context()`.
 public final class ModuleContext {
 
   /// A module-level name. `null` means unbound.
