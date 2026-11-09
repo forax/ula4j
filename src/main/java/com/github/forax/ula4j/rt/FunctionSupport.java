@@ -35,13 +35,13 @@ final class FunctionSupport {
 
   // ---- globals
 
-  static CallSite getGlobal(MethodHandles.Lookup lookup, String name) {
-    var cell = ((FunctionClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
+  static CallSite getGlobal(ModuleContext context, String name) {
+    var cell = context.cell(name);
     return new ConstantCallSite(CELL_GET.bindTo(cell));
   }
 
-  static CallSite setGlobal(MethodHandles.Lookup lookup, String name) {
-    var cell = ((FunctionClassLoader) lookup.lookupClass().getClassLoader()).context().cell(name);
+  static CallSite setGlobal(ModuleContext context, String name) {
+    var cell = context.cell(name);
     return new ConstantCallSite(CELL_SET.bindTo(cell));
   }
 
@@ -61,10 +61,7 @@ final class FunctionSupport {
 
     private static final Object[] EMPTY_CAPTURED_ARGS = new Object[0];
 
-    static CallSite def(MethodHandles.Lookup lookup, MethodType type, int astIndex) {
-      var moduleClassLoader = (FunctionClassLoader) lookup.lookupClass().getClassLoader();
-      var context = moduleClassLoader.context();
-      var dictionary = moduleClassLoader.dictionary();
+    static CallSite def(ModuleContext context, Dictionary dictionary, MethodType type, int astIndex) {
       var def = dictionary.lookup(astIndex);
 
       var functionName = def.name();
@@ -326,8 +323,8 @@ final class FunctionSupport {
       //CheckClassAdapter.verify(new ClassReader(bytes), true, new PrintWriter(System.err));
 
       var className = BytecodeGenerator.functionClassName(def).replace('/', '.');
-      var loader = new FunctionClassLoader(ctx, dictionary);
-      var clazz = loader.define(className, bytes);
+      var clazz = RT.defineClass(ctx, dictionary, className, bytes);
+
       var captureCount = BytecodeGenerator.captureNames(def, scope.analysis()).size();
       var type = BytecodeGenerator.bodyType(captureCount, def.parameters().size(), def.rest().isPresent());
       try {
