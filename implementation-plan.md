@@ -214,7 +214,7 @@ Intrinsics accept only canonical runtime representations. A Java `null` reaching
 
 ### 6.1 Runtime intrinsics
 
-Runtime intrinsics are static Java methods annotated `@PyIntrinsic`.
+Runtime intrinsics are static Java methods annotated `@Intrinsic`.
 The method name must start with '$' and end with '$'.
 They form the compiler-to-runtime ABI and are not Python names.
 
@@ -452,7 +452,7 @@ Numeric semantics must be tested against the pinned CPython executable, not infe
 
 ## 11. Intrinsics as Java
 
-Intrinsics are static methods with the convention $name$ annotated `@PyIntrinsic`.
+Intrinsics are static methods with the convention $name$ annotated `@Intrinsic`.
 Type-dependent dispatch uses Java pattern-matching `switch` statements over the input objects.
 
 Example shape:
