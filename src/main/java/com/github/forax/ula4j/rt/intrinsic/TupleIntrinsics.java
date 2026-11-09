@@ -26,6 +26,7 @@ public final class TupleIntrinsics {
   /// The array is not retained.
   public static PyTuple fromArray(Object... items) {
     return switch (items.length) {
+      case 0 -> EMPTY;
       case 1 -> new PyTuple1(items[0]);
       case 2 -> new PyTuple2(items[0], items[1]);
       case 3 -> new PyTuple3(items[0], items[1], items[2]);
