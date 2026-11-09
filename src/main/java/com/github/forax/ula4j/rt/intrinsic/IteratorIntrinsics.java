@@ -24,6 +24,10 @@ public final class IteratorIntrinsics {
 
   @Intrinsic
   public static Object $next$(Object iterator) {
-    return ((PyIterator) iterator).next();
+    return switch (iterator) {
+      case PyIterator.StringIterator it -> it.next();
+      case PyIterator.TupleIterator it -> it.next();
+      default -> throw new PyTypeError("'" + typeName(iterator) + "' object has no next");
+    };
   }
 }

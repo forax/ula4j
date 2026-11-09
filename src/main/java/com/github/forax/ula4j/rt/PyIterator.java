@@ -4,9 +4,6 @@ import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
 
 /// Internal iterators used by `for`; they are never visible to Python code.
 public sealed interface PyIterator {
-  /// The next item, or Java `null` once exhausted (`null` is never a Python value).
-  Object next();
-
   final class TupleIterator implements PyIterator {
     private final PyTuple tuple;
     private final long size;
@@ -17,7 +14,6 @@ public sealed interface PyIterator {
       this.size = TupleIntrinsics.$size$(tuple);
     }
 
-    @Override
     public Object next() {
       return index < size ? TupleIntrinsics.$get$(tuple, index++) : null;
     }
@@ -31,7 +27,6 @@ public sealed interface PyIterator {
       this.string = string;
     }
 
-    @Override
     public Object next() {
       if (index >= string.length()) {
         return null;
