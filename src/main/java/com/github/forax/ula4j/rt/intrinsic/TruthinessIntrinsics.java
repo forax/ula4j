@@ -26,7 +26,6 @@ public final class TruthinessIntrinsics {
     }
   }
 
-  /// `not x` (the compiler boxes the result when it is used as a value).
   @Intrinsic
   public static boolean $not$(Object value) {
     return !$truthy$(value);
