@@ -37,7 +37,8 @@ The following are explicitly deferred:
 - Dict view objects and the `dict.items()`, `dict.keys()`, and `dict.values()` methods.
 - A general Python object-identity operator or bound-method object model.
 
-Runtime operations may raise Python exceptions implicitly. The first implementation does not let Python code catch those exceptions.
+Runtime operations may raise Python exceptions implicitly.
+The first implementation does not let Python code catch those exceptions.
 
 ### 1.3 Core invariants
 
@@ -58,9 +59,9 @@ Runtime operations may raise Python exceptions implicitly. The first implementat
 | `int` | `Long` or `BigInteger` | One logical Python type. Use `Long` when the value fits and promote to `BigInteger` on overflow. |
 | `float` | `Double` | IEEE-754 binary64; Python numeric semantics are implemented explicitly. |
 | `str` | `String` | Length, indexing, slicing, iteration, containment, and ordering use Unicode code points. |
-| `list` | `PyList` | Mutable list backed by `List<Object>`. |
+| `list` | `PyList` | Mutable list backed by an array. |
 | `tuple` | Java records | Four fixed-arity tuple record classes plus one generic record carrying `Object[]`. |
-| `dict` | `PyDict` | Custom insertion-ordered hash table; implements `Map<Object,Object>`. |
+| `dict` | `PyDict` | Custom insertion-ordered hash table. |
 | `range` | `PyRange` | Final immutable class; supports Python's arbitrary-precision integer bounds, iteration, membership, indexing, slicing, equality, and length behavior. |
 | `slice` | `PySlice` | Final record `(start, stop, step)`; each component may be `None`. |
 | Python function | `PyFunction` | Entry point, name, arity, varargs flag, and captured values. No default-argument metadata. |
@@ -69,20 +70,18 @@ Runtime operations may raise Python exceptions implicitly. The first implementat
 ### 2.1 Representation rules
 
 - Runtime value classes are final records or final classes unless the JVM representation itself is a JDK class.
-- `PyFunction` is a final class, not a record.
+- `PyFunction` is a final class.
 - `PyList` and `PyDict` are mutable reference objects.
-- Tuple arities 1–4 use specialized records. The generic tuple record is used for arity 0 and arity 5 or greater. This arity choice is provisional until benchmarks justify a different split.
+- Tuple arities 1–4 use specialized records. The generic tuple record is used for arity 0 and arity 5 or greater.
 - The generic tuple record defensively copies its input array.
 - Tuple shape is a performance property only. Every tuple intrinsic must work correctly with every tuple representation.
-- There is no `PySet` in the first implementation.
-- Because Python `is` and `is not` are not implemented, the language does not expose a general identity comparison for immutable values. The implementation must nevertheless preserve the specified behavior of every supported operation, especially container lookup and equality.
+- Because Python `is` and `is not` are not implemented, the language does not expose a general identity comparison for immutable values.  The implementation must nevertheless preserve the specified behavior of every supported operation, especially container lookup and equality.
 
 ### 2.2 Identity and equality
 
 - The parser/compiler rejects `is` and `is not`.
 - Python `==`, `!=`, ordering, and hashing are implemented by runtime intrinsics. They do not rely on Java record `equals`, `hashCode`, or collection equality.
-- Container lookup and membership use a JVM reference-equality fast path where applicable, followed by Python equality. This is an implementation detail of the container algorithms, not a Python identity operator exposed to source programs.
-- Numeric equality and hashing must unify equivalent keys across `bool`, `int`, and `float`, including the supported JVM representations of integers.
+- Numeric equality and hashing must unify equivalent keys across `bool`, `int`, and `float`.
 - Tests must not depend on the identity of immutable values or on interning behavior.
 
 ## 3. `PyType` and builtin type objects
@@ -111,20 +110,20 @@ Rules:
 
 The initial implementation supports:
 
-- `list`, represented by `PyList` and implementing `List<Object>`.
+- `list`, represented by `PyList` and implementing all unmodfiable methods of `List<Object>`.
 - `tuple`, represented by the tuple record classes.
-- `dict`, represented by `PyDict` and implementing `Map<Object,Object>`.
+- `dict`, represented by `PyDict` and implementing all unmodifiable methods of `Map<Object,Object>`.
 
 Sets and frozensets are not implemented. Set displays are rejected. `{}` remains a dictionary display.
 
 ### 4.2 Python semantics take precedence
 
-Equality, hashing, ordering, membership, indexing, and mutation are runtime semantics, not delegated to Java collection behavior.
+Equality, hashing, ordering, membership, indexing, and mutation are runtime semantics,
+not delegated to Java collection behavior.
 
 In particular:
 
 - Never rely on Java `equals()` or `hashCode()` for Python list, tuple, or dict semantics.
-- Container lookup uses reference equality first where applicable, then Python `==`.
 - List equality is recursive and element-wise, following Python semantics.
 - Tuple equality is recursive and element-wise, following Python semantics.
 - Dictionary equality is independent of insertion order and follows Python key/value equality semantics.
@@ -135,7 +134,7 @@ In particular:
 
 ### 4.3 `PyDict` implementation
 
-`PyDict` uses a custom open-addressing, insertion-ordered hash table. It is not built on `LinkedHashMap`.
+`PyDict` uses a custom open-addressing, insertion-ordered hash table.
 
 The implementation must preserve Python behavior for all supported dictionary operations, including:
 
@@ -148,20 +147,20 @@ The implementation must preserve Python behavior for all supported dictionary op
 - Iteration over keys.
 - Mutation during iteration.
 
-Dictionary iteration must detect structural changes and raise a Python `RuntimeError`, rather than exposing `ConcurrentModificationException`. The implementation should also detect key-set changes that CPython detects, not merely changes in dictionary size.
-
-Dictionary view objects are not part of the initial subset. `items()`, `keys()`, and `values()` are not implemented as methods.
+All those methods are implemented as intrinsics (dict.get() is $get$(dict), dict.items() is $items$(dict), etc).
+Dictionary iteration must detect structural changes and raise a Python `RuntimeError`, rather than exposing `ConcurrentModificationException`. The implementation should also detect key-set changes that CPython detects, not just changes in dictionary size.
 
 ### 4.4 `PyList` implementation
 
-`PyList` implements `List<Object>`, with Python semantics for every operation exposed to compiled Python code.
+`PyList` must preserve Python semantics for every operation exposed to compiled Python code.
 
 - List iteration is index-based, matching CPython behavior when the list is mutated during iteration.
 - Mutation during iteration must not produce Java fail-fast behavior.
 - List membership uses Python equality, with the container identity fast path described above.
 - List indexing, slicing, assignment, deletion, concatenation, repetition, and supported methods must follow Python semantics.
 
-The implementation intentionally accepts the engineering trade-off of implementing Java's `List` interface. Its Java-facing contract and the Python-facing behavior must be documented carefully. Compiled Python code must reach Python behavior through the runtime API rather than accidentally invoking an incompatible Java default method.
+Python-facing behavior is implemented using intrinsics.
+Compiled Python code must reach Python behavior through the runtime API rather than accidentally invoking an incompatible Java method.
 
 ### 4.5 Tuple implementation
 
@@ -179,16 +178,15 @@ Method calls are supported only for explicitly listed methods on these receiver 
 - `str`
 - Python function
 
-There is no general attribute or bound-method object model. `obj.name(args)` is compiled to a dedicated `callMethod` intrinsic. The receiver's JVM class and the method name determine dispatch.
-
-The exact initial method table remains an open decision and must be written down before implementing each method. Dict view methods (`items`, `keys`, and `values`) are excluded.
+There is no general attribute or bound-method object model.
+`obj.name(args)` is compiled to a dedicated `callMethod` bootstrap method that is bound to the corresponding instrinsics.
 
 ## 5. `None`, missing states, constants, and Java interop
 
 ### 5.1 Missing states
 
 - Python `None` is `PyNone.INSTANCE`, never Java `null`.
-- Separate private sentinels represent internal states such as a missing dictionary key or an omitted optional argument.
+- `null` is used as internal states.
 - There is no unbound-local sentinel. Definite-assignment analysis guarantees that a local is not read before assignment.
 
 ### 5.2 `ConstantDynamic`
@@ -216,15 +214,16 @@ Intrinsics accept only canonical runtime representations. A Java `null` reaching
 
 ### 6.1 Runtime intrinsics
 
-Runtime intrinsics are static Java methods annotated `@PyIntrinsic`. They form the compiler-to-runtime ABI and are not Python names.
+Runtime intrinsics are static Java methods annotated `@PyIntrinsic`.
+The method name must start with '$' and end with '$'.
+They form the compiler-to-runtime ABI and are not Python names.
 
 Examples include:
 
-- Arithmetic and comparison: `add`, `sub`, `mul`, `div`, `floorDiv`, `mod`, `pow`, `eq`, `lt`, and related operations.
-- Augmented operations: `iadd`, `isub`, `imul`, and corresponding operations for the supported augmented-assignment forms.
-- Container operations: `getItem`, `setItem`, `deleteItem`, `contains`, and literal factories.
+- Arithmetic and comparison: `$add$`, `$sub$`, `$mul$`, `$div$`, `$floorDiv$`, `$mod$`, `$pow$`, `$eq$`, `$lt$`, and related operations.
+- Augmented operations: `$iadd$`, `$isub$`, `$imul$`, and corresponding operations for the supported augmented-assignment forms.
+- Container operations: `$getItem$`, `$setItem$`, `$deleteItem$`, `$contains$`, and literal factories.
 - Literal factories: `listLiteral`, `tupleLiteral`, and `dictLiteral`.
-- Function operations: `functionDefinition`, `call`, and `callMethod`.
 - Type and conversion operations: `type`, `isinstance`, and supported constructors.
 
 The exact inventory is finalized alongside the language subset and builtin table.
@@ -349,22 +348,23 @@ A surrogate escape in a string literal (such as `'\ud83d'`) leads to a runtime e
 A compiled Python function has an entry signature conceptually equivalent to:
 
 ```text
-(PyFunction self, Object a0, ..., Object an-1 [, Object rest]) -> Object
+(Object c0, ..., Object cn-1, PyFunction self, Object a0, ..., Object an-1 [, Object rest]) -> Object
 ```
 
+- `c0` ... `cn-1` are the captured arguments
 - `self` carries captured values and provides the function's code identity.
+- `a0` ... `an-1` are the arguments
 - `rest`, when present, is a Python tuple containing the extra positional arguments.
 - Call sites build the rest tuple with an argument collector.
 - Wrong arity raises a Python `TypeError`.
-- Calls to `PyType` use the same general call machinery and target the type's constructor intrinsic.
 
 ### 8.2 Call-site kinds
 
 There are three dynamic call forms:
 
 1. **Global call.** The bootstrap resolves the current function from its module cell and binds it as a constant method handle guarded by a `SwitchPoint`. Rebinding the global invalidates the switch point. A cell rebound more than a configurable threshold is marked unstable and its sites use the value-call path to avoid repeated relinking.
-2. **Value call.** An inline cache guards on the function's code identity (entry point), not the `PyFunction` instance. Closures created by repeated executions of the same `def` therefore share the code guard while retaining their own captured values.
-3. **Method call.** A dedicated `callMethod` site specializes on receiver JVM class and the explicit method table.
+2. **Value call.** An inline cache guards on the `PyFunction` if there is no captured args or on function's code identity. Closures created by repeated executions of the same `def` therefore share the code guard while retaining their own captured values.
+3. **Method call.** A dedicated `callMethod` site calls the corresponding intrinsics.
 
 ### 8.3 Globals
 
@@ -381,7 +381,7 @@ There are three dynamic call forms:
 - Closure capture uses a Java-style effectively-final rule.
 - A variable from an enclosing function may be captured only if it has exactly one binding occurrence, that binding is not in a loop body or loop target, it is definitely assigned when the nested definition executes, and it is not deleted or rebound by the nested function.
 - Augmented and unpacking assignments count as bindings.
-- Captures are copied into `PyFunction` at definition time and loaded into locals in the function prologue.
+- Captured arguments are copied into `PyFunction` at definition time and loaded into locals in the function prologue.
 - Mutating an object referenced by a captured variable remains allowed.
 - Nested functions may refer to their own name through the `self` parameter when the binding rules permit it.
 - Mutual recursion among nested functions is rejected when it would require capturing a name before assignment.
@@ -452,39 +452,41 @@ Numeric semantics must be tested against the pinned CPython executable, not infe
 
 ## 11. Intrinsics as Java
 
-Intrinsics are static methods annotated `@PyIntrinsic`.
+Intrinsics are static methods with the convention $name$ annotated `@PyIntrinsic`.
 Type-dependent dispatch uses Java pattern-matching `switch` statements over the input objects.
 
 Example shape:
 
 ```java
-@PyIntrinsic
-public static Object add(Object left, Object right) {
-    switch (left) {
-        case Long l -> {
-            switch (right) {
-                case Long r -> {
-                    try {
-                        return Math.addExact(l, r);
-                    } catch (ArithmeticException e) {
-                        return BigInteger.valueOf(l).add(BigInteger.valueOf(r));
-                    }
-                }
-                case BigInteger r -> { return BigInteger.valueOf(l).add(r); }
-                case Boolean r -> { return add(l, r ? 1L : 0L); }
-                case Double r -> { return l.doubleValue() + r; }
-                default -> throw unsupportedOperands(left, right);
-            }
+@Intrinsic
+public static Object $add$(Object left, Object right) {
+  switch (left) {
+    case Long l -> {
+      switch (right) {
+        case Long r -> {
+          try {
+            return Math.addExact(l, r);
+          } catch (ArithmeticException _) {
+            return BigInteger.valueOf(l).add(BigInteger.valueOf(r));
+          }
         }
-        case BigInteger l -> {
-            // BigInteger cases
-        }
-        case Boolean l -> { return add(l ? 1L : 0L, right);}
-        case Double l -> {
-            // Double cases
-        }
-        default -> throw unsupportedOperands(left, right);
+        default -> { return addGeneric(left, right); }
+      }
     }
+    case Double l -> {
+      switch (right) {
+        case Double r -> { return l + r; }
+        default -> { return addGeneric(left, right); }
+      }
+    }
+    case String l -> {
+      switch (right) {
+        case String r -> { return l.concat(r); }
+        default -> { return addGeneric(left, right); }
+      }
+    }
+    default -> { return addGeneric(left, right); }
+  }
 }
 ```
 
@@ -493,54 +495,16 @@ Rules:
 - Use type patterns only: no `when` guards, record patterns, `case null`, or expression switches in intrinsic dispatch.
 - A `default` case is always present.
 - The generic intrinsic implements the complete semantics and error behavior.
-- Only calls to other `@PyIntrinsic` methods are rewritten to `invokedynamic`.
+- Only calls to other methods with the convention $name$ are rewritten to `invokedynamic`.
 - Ordinary JDK calls such as `Math.addExact` remain direct calls.
 - Intrinsics handle only canonical JVM representations. Java `null` is an internal bug.
 
-## 12. ASM-based per-call-site specializer
-
-### 12.1 Purpose
-
-`PySpecializer` reads the class bytes of generic intrinsics at run time, rewrites eligible pattern-switch dispatch, and defines specialized hidden classes.
-
-The purpose is to let HotSpot profile the specialized implementation associated with a particular dynamic call site rather than one shared generic intrinsic body.
-
-### 12.2 No separate specialization cache
-
-There is no global cache keyed by `(intrinsic, argument classes)` and no cross-call-site reuse of generated specialized implementations.
-
-- The `CallSite` object is the specialization cache and linkage state.
-- Each call site maintains its own observed class information and bounded guard chain.
-- A specialized implementation generated for one call site is not reused as the implementation of another call site.
-- The call site's target and guard chain retain the generated implementation for as long as that call site needs it.
-- When a site becomes too polymorphic or exceeds its specialization budget, it falls back to the generic intrinsic. The fallback policy is local to that site.
-- Generated hidden classes can unload when no reachable call site or method handle retains them.
-
-This is an intentional design constraint: specialization state must not reintroduce the cross-site profile pollution that motivated the specializer.
-
-### 12.3 Detection and rewrite
-
-- Inspect intrinsic class bytes from resources.
-- Detect `invokedynamic` sites whose bootstrap is `SwitchBootstraps.typeSwitch`, using bootstrap owner/name and static arguments rather than surrounding instruction patterns.
-- The supported shape is `(Object, int) -> int`, with class labels as static arguments and assignable-class matching.
-- The restart argument must be the constant `0`.
-- Other label kinds, non-zero restart values, and guarded pattern-switch lowering are reported as an error at run time (this may change later); the intrinsic remains callable in generic form.
-- Rewrite supported switches into a guard cascade over the exact observed classes.
-- A guard failure falls through to the generic path.
-- Calls to nested `@PyIntrinsic` methods become independent `invokedynamic` sites and specialize through their own `CallSite` objects.
-
-### 12.4 Guard soundness
-
-- Runtime value classes are final, so exact-class guards are sound for those representations.
-- JDK classes such as `BigInteger` are guarded using exact `getClass() ==` checks.
-- Unknown or unsupported classes use the generic path.
-- The generic intrinsic remains available as the correctness fallback at all times.
-
-### 12.5 JDK coupling
+## 12. JDK coupling
 
 The exact lowering of Java pattern switches is a `javac`/JDK implementation detail.
 
-A CI shape test asserts the expected `typeSwitch` bootstrap form for every intrinsic. A JDK upgrade that changes the expected form must fail loudly; update the specializer only after reviewing the new bytecode shape.
+A CI shape test asserts the expected `typeSwitch` bootstrap form for every intrinsic.
+A JDK upgrade that changes the expected form must fail loudly; update the specializer only after reviewing the new bytecode shape.
 
 ## 13. JVM and compiler limits
 
@@ -552,7 +516,7 @@ No heroic method splitting or spilling is attempted.
 
 ## 14. Toolchain and build
 
-- Target Java 28. Until GA, use early-access build. When GA is available, use GA.
+- Target Java 27. Until Java 28 is GA.
 - Use ASM 9.11.
 - The CPython semantic reference and test version is Python 3.14.
 - The compiler grammar should track the selected CPython version closely for accepted syntax, without implementing unrelated language features.
@@ -634,9 +598,5 @@ These decisions must be resolved as implementation approaches the relevant area;
 2. **Builtin set:** decide the initial names, exact signatures, argument validation, and behavior. The candidate list in §6.3 is not final.
 3. **Container method table:** decide exactly which list, tuple, dict, str, and function methods are initially available.
 4. **Dictionary method scope:** confirm the supported dictionary methods beyond subscript, membership, iteration, and the explicitly selected method table. `items`, `keys`, and `values` remain excluded.
-5. **Output formatting:** decide whether `print(x, end=...)` is supported despite keyword arguments otherwise being rejected. `%` string formatting is supported; `str.format` is not.
-6. **Tuple record arities:** validate the proposed specialized arities 1–4 through benchmarks.
-7. **Parser implementation:** handwritten parser versus generated parser.
-8. **Specializer policy:** select the per-call-site polymorphism limit, relinking policy, and megamorphic fallback threshold.
-9. **Range API details:** `range` bounds and steps use arbitrary-precision integers; `len(range(...))` follows CPython and raises `OverflowError` when the length cannot fit `Py_ssize_t`. Confirm the full supported range operation surface and builtin signature.
-10. **Function method surface:** decide whether any function methods are supported; do not infer support merely because function receivers are listed as a method-call category.
+5. **Output formatting:** decide whether `print(x, end=...)` is supported despite keyword arguments otherwise being rejected. `%` string formatting is supported; `str.format` is not. 
+6. **Function method surface:** decide whether any function methods are supported; do not infer support merely because function receivers are listed as a method-call category.
