@@ -24,13 +24,13 @@ public final class PyFunction {
       }
     }*/
 
-    final String name;  //FIXME use real Python qualified name
-    final List<String> parameters;
-    final boolean varargs;
-    final int captureCount;
+    private final String name;  //FIXME use real Python qualified name
+    private final List<String> parameters;
+    private final boolean varargs;
+    private final int captureCount;
 
-    final ModuleContext context;          // null if native
-    final Stmt.FunctionDef functionDef;   // null if native
+    private final ModuleContext context;          // null if native
+    private final Stmt.FunctionDef functionDef;   // null if native
 
     // compiled (accessed under a lock on this unless native)
     volatile MethodHandle compiledEntry;
@@ -53,6 +53,17 @@ public final class PyFunction {
       this.functionDef = functionDef;
       super();
     }
+
+    String name() { return name; }
+    List<String> parameters() { return parameters; }
+    int captureCount() { return captureCount; }
+
+    ModuleContext context() { return context; }
+    Stmt.FunctionDef functionDef() { return functionDef; }
+
+    boolean isBuiltin() { return functionDef == null; }
+    boolean hasRestParameter() { return varargs && functionDef != null; }
+    boolean isVariadic() { return varargs; }
   }
 
   final Code code;
@@ -69,7 +80,7 @@ public final class PyFunction {
   public int arity() { return code.parameters.size(); }
   public boolean varargs() { return code.varargs; }
 
-  public boolean isBuiltin() { return code.functionDef == null; }
+  public boolean isBuiltin() { return code.isBuiltin(); }
   Object[] capturedArgs() { return capturedArgs; }
 
   @Override

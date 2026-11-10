@@ -18,17 +18,17 @@ final class Builtins {
   static {
     LOOKUP = MethodHandles.lookup();
     BUILTINS = Map.of(
-        "print", newBuiltin("print", List.of("objects"))
+        "print", newBuiltin("print", List.of("objects"), true)
     );
   }
 
-  private static PyFunction newBuiltin(String name, List<String> parameters) {
-    var code = new PyFunction.Code(name, parameters, false, 0, null, null);
+  private static PyFunction newBuiltin(String name, List<String> parameters, boolean varargs) {
+    var code = new PyFunction.Code(name, parameters, varargs, 0, null, null);
     return new PyFunction(code, NO_CAPTURE_ARGS);
   }
 
   public static MethodHandle resolve(PyFunction.Code code) {
-    var name = code.name;
+    var name = code.name();
     return switch(name) {
       case  "print" -> resolve(name, methodType(Object.class, PyFunction.class, Object[].class));
       default -> throw new AssertionError("unknown builtin " + name);
@@ -50,7 +50,7 @@ final class Builtins {
     var separator = "";
     for (var arg : args) {
       builder.append(separator).append(StringIntrinsics.$str$(arg));
-      separator = ", ";
+      separator = " ";
     }
     System.out.println(builder.toString());
     return PyNone.INSTANCE;

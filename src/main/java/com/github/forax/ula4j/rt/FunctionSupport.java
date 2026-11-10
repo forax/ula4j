@@ -66,9 +66,9 @@ final class FunctionSupport {
 
       var functionName = def.name();
       var parameters = def.parameters().stream().map(Stmt.FunctionDef.Param::name).toList();
-      var varargs = def.rest().isPresent();
+      var hasRestParameter = def.rest().isPresent();
       var captureCount = type.parameterCount();
-      var code = new PyFunction.Code(functionName, parameters, varargs, captureCount, context, def);
+      var code = new PyFunction.Code(functionName, parameters, hasRestParameter, captureCount, context, def);
 
       if (captureCount == 0) {
         var function = new PyFunction(code, EMPTY_CAPTURED_ARGS);
@@ -131,14 +131,14 @@ final class FunctionSupport {
 
       private static MethodHandle createThunk(MethodHandle compiledEntry, PyFunction.Code code) {
         // 1. Spread captured arguments.
-        var captureCount = code.captureCount;
+        var captureCount = code.captureCount();
         var handle = captureCount == 0
             ? MethodHandles.dropArguments(compiledEntry, 0, Object[].class)
             : compiledEntry.asSpreader(0, Object[].class, captureCount);
 
         // 2. Ordinary function: spread positional arguments.
-        var arity = code.parameters.size();
-        if (!code.varargs) {
+        var arity = code.parameters().size();
+        if (!code.hasRestParameter()) {
           return arity == 0
               ? MethodHandles.dropArguments(handle, 2, Object[].class)
               : handle.asSpreader(2, Object[].class, arity);
@@ -237,7 +237,7 @@ final class FunctionSupport {
 
       var code = function.code;
       MethodHandle target, test;
-      if (code.captureCount == 0) {
+      if (code.captureCount() == 0) {
         // 3a. No captured args, do a quick function check
         test = SAME_FUNCTION.bindTo(function);
         target = getNoCaptureMH(function);
@@ -272,7 +272,7 @@ final class FunctionSupport {
       }
       var compiledEntry = getCompiledEntry(code);
 
-      var captureCount = code.captureCount;  // != 0
+      var captureCount = code.captureCount();  // != 0
       var spread = compiledEntry.asSpreader(0, Object[].class, captureCount);     // (Object[], PyFunction, ...)
       entry = MethodHandles.foldArguments(spread, CAPTURED_ARGS);
       code.entry = entry;
@@ -285,7 +285,7 @@ final class FunctionSupport {
       if (compiledEntry != null) {
         return compiledEntry;
       }
-      if (code.functionDef == null) {  // native builtin function
+      if (code.isBuiltin()) {  // builtin function?
         return code.compiledEntry = Builtins.resolve(code);  // volatile write
       }
       synchronized (code) {
@@ -294,7 +294,7 @@ final class FunctionSupport {
           return compiledEntry;
         }
         // try to find if there is already a cached compiled entry
-        compiledEntry = compileBody(code.context, code.functionDef);
+        compiledEntry = compileBody(code.context(), code.functionDef());
         code.compiledEntry = compiledEntry;  // volatile write
         return compiledEntry;
       }
@@ -341,7 +341,7 @@ final class FunctionSupport {
 
     private static void checkArity(PyFunction function, int argc) {
       var arity = function.arity();
-      if (function.varargs()) {
+      if (function.code.isVariadic()) {
         if (argc < arity) {
           throw arityError(function, argc);
         }
@@ -352,7 +352,7 @@ final class FunctionSupport {
 
     /// Adapts the entry to `(PyFunction, Object x argc) -> Object`.
     private static MethodHandle adapt(PyFunction function, MethodHandle entry, int argc) {
-      if (!function.varargs()) {
+      if (!function.code.hasRestParameter()) {
         return entry;  // exact arity: no adaptation at all
       }
       var arity = function.arity();
