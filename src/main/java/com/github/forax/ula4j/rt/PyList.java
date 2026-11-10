@@ -4,7 +4,6 @@ import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 
 import java.util.AbstractList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 
 /// Mutable Python-list storage.
