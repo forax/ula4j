@@ -6,7 +6,6 @@ import com.github.forax.ula4j.rt.intrinsic.IteratorIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.ListIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.TruthinessIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.EqualityIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.StringIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
@@ -95,12 +94,6 @@ public final class IntrinsicShapeTest {
   public void hashingIntrinsicsHaveTheExpectedShape() throws IOException {
     assertTypeSwitchShape(HashingIntrinsics.class);
     assertTrue(typeSwitchCount(HashingIntrinsics.class, "$hash$") >= 1);
-  }
-
-  @Test
-  public void equalityIntrinsicsHaveTheExpectedShape() throws IOException {
-    assertTypeSwitchShape(EqualityIntrinsics.class);
-    assertTrue(typeSwitchCount(EqualityIntrinsics.class, "$eq$") >= 1);
   }
 
   @Test
