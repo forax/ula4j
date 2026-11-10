@@ -69,7 +69,7 @@ public final class PyDict<K,V> extends AbstractMap<K,V> {
 
   /// Version of the key set. Insertions, deletions and non-empty clears change it; value
   /// replacement does not. Intended for dictionary iterators.
-  public long keysVersion() {
+  public long layoutVersion() {
     return keysVersion;
   }
 

@@ -1,8 +1,9 @@
 package com.github.forax.ula4j.rt;
 
+import com.github.forax.ula4j.rt.error.PyRuntimeError;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
 
-/// Internal iterators used by `for`; they are never visible to Python code.
+/// Internal iterators used by {@code for}; they are never visible to Python code.
 public sealed interface PyIterator {
   final class TupleIterator implements PyIterator {
     private final PyTuple tuple;
@@ -12,7 +13,6 @@ public sealed interface PyIterator {
     public TupleIterator(PyTuple tuple) {
       this.tuple = tuple;
       this.size = TupleIntrinsics.$size$(tuple);
-      super();
     }
 
     public Object next() {
@@ -55,6 +55,61 @@ public sealed interface PyIterator {
       var item = string.substring(index, end);
       index = end;
       return item;
+    }
+  }
+
+  /// Key iterator. Value replacement is allowed; size changes and detected key-set changes fail.
+  final class DictIterator implements PyIterator {
+    private final PyDict<?,?> dict;
+    private final int expectedSize;
+    private final long expectedLayoutVersion;
+    private int position;
+    private int remaining;
+    private String failure;
+    private boolean exhausted;
+
+    public DictIterator(PyDict<?,?> dict) {
+      var expectedSize = dict.size();
+      this.dict = dict;
+      this.expectedLayoutVersion = dict.layoutVersion();
+      this.expectedSize = expectedSize;
+      this.remaining = expectedSize;
+      super();
+    }
+
+    public Object next() {
+      if (failure != null) {
+        throw new PyRuntimeError(failure);
+      }
+      if (exhausted) {
+        return null;
+      }
+      if (dict.size() != expectedSize) {
+        return fail("dictionary changed size during iteration");
+      }
+      if (dict.layoutVersion() != expectedLayoutVersion) {
+        return fail("dictionary keys changed during iteration");
+      }
+
+      while (position < dict.entryCount()) {
+        var key = dict.keyAt(position++);
+        if (key == null) {
+          continue;
+        }
+        if (remaining == 0) {
+          return fail("dictionary keys changed during iteration");
+        }
+        remaining--;
+        return key;
+      }
+
+      exhausted = true;
+      return null;
+    }
+
+    private Object fail(String message) {
+      failure = message;
+      throw new PyRuntimeError(message);
     }
   }
 }

@@ -1,5 +1,7 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyDict;
+import com.github.forax.ula4j.rt.PyIterator.DictIterator;
 import com.github.forax.ula4j.rt.PyIterator.StringIterator;
 import com.github.forax.ula4j.rt.PyIterator.ListIterator;
 import com.github.forax.ula4j.rt.PyIterator.TupleIterator;
@@ -19,6 +21,7 @@ public final class IteratorIntrinsics {
       case PyTuple t -> { return new TupleIterator(t); }
       case String s -> { return new StringIterator(s); }
       case PyList<?> list -> { return new ListIterator(list); }
+      case PyDict<?,?> dict -> { return new DictIterator(dict); }
       default -> throw new PyTypeError("'" + typeName(iterable) + "' object is not iterable");
     }
   }
@@ -29,6 +32,7 @@ public final class IteratorIntrinsics {
       case StringIterator it -> { return it.next(); }
       case TupleIterator it -> { return it.next(); }
       case ListIterator it -> { return it.next(); }
+      case DictIterator it -> { return it.next(); }
       default -> throw new PyTypeError("'" + typeName(iterator) + "' object has no next");
     }
   }
