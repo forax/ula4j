@@ -1,7 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
 import com.github.forax.ula4j.rt.PyNone;
-import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
 import com.github.forax.ula4j.rt.PyTuple.PyTupleN;
@@ -42,7 +41,6 @@ public final class StringIntrinsicsTest {
       assertEquals("0", StringIntrinsics.$str$(0L));
       assertEquals("42", StringIntrinsics.$str$(42L));
       assertEquals("-42", StringIntrinsics.$str$(-42L));
-      // Well below MAX_INT_STR_DIGITS, so always accepted.
       assertEquals(Long.toString(Long.MAX_VALUE), StringIntrinsics.$str$(Long.MAX_VALUE));
       assertEquals(Long.toString(Long.MIN_VALUE), StringIntrinsics.$str$(Long.MIN_VALUE));
     }
@@ -58,15 +56,37 @@ public final class StringIntrinsicsTest {
       assertEquals("()", StringIntrinsics.$str$(new PyTupleN(new Object[0])));
       assertEquals("(1,)", StringIntrinsics.$str$(new PyTuple1(1L)));
       assertEquals("(1, 2)", StringIntrinsics.$str$(new PyTuple2(1L, 2L)));
-      // Strings are quoted inside tuples.
       assertEquals("('hi',)", StringIntrinsics.$str$(new PyTuple1("hi")));
-      // Nested tuples.
       var inner = new PyTuple1("a");
       var outer = new PyTuple2(inner, 1L);
       assertEquals("(('a',), 1)", StringIntrinsics.$str$(outer));
-      // Mixed scalar types.
       assertEquals("(1, 'two', True, None)", StringIntrinsics.$str$(
           new PyTupleN(new Object[] {1L, "two", true, PyNone.INSTANCE})));
+    }
+
+    @Test
+    public void strTupleWithFloat() {
+      assertEquals("(1.5,)", StringIntrinsics.$str$(new PyTuple1(1.5)));
+      assertEquals("(0.1, 1.0)", StringIntrinsics.$str$(new PyTuple2(0.1, 1.0)));
+      assertEquals("(-0.0,)", StringIntrinsics.$str$(new PyTuple1(-0.0)));
+      assertEquals("(inf,)", StringIntrinsics.$str$(new PyTuple1(Double.POSITIVE_INFINITY)));
+      assertEquals("(nan,)", StringIntrinsics.$str$(new PyTuple1(Double.NaN)));
+    }
+
+    // NEW: tuple elements use the integer formatter (and hence the digit limit).
+    @Test
+    public void strTupleWithBigInteger() {
+      assertEquals("(42,)", StringIntrinsics.$str$(new PyTuple1(BigInteger.valueOf(42L))));
+      assertEquals("(-42,)", StringIntrinsics.$str$(new PyTuple1(BigInteger.valueOf(-42L))));
+    }
+
+    // NEW: nested empty tuples and empty strings.
+    @Test
+    public void strTupleNestedEmpty() {
+      var empty = new PyTupleN(new Object[0]);
+      assertEquals("((),)", StringIntrinsics.$str$(new PyTuple1(empty)));
+      assertEquals("('', '')",
+          StringIntrinsics.$str$(new PyTuple2("", "")));
     }
 
     @Test
@@ -83,7 +103,6 @@ public final class StringIntrinsicsTest {
 
     @Test
     public void reprString() {
-      // `repr(str)` quotes and escapes — see the `Quote` nested class for details.
       assertEquals("'hello'", StringIntrinsics.$repr$("hello"));
       assertEquals("''", StringIntrinsics.$repr$(""));
     }
@@ -111,10 +130,16 @@ public final class StringIntrinsicsTest {
       assertEquals("()", StringIntrinsics.$repr$(new PyTupleN(new Object[0])));
       assertEquals("(1,)", StringIntrinsics.$repr$(new PyTuple1(1L)));
       assertEquals("(1, 2)", StringIntrinsics.$repr$(new PyTuple2(1L, 2L)));
-      // Elements go through repr, so strings are quoted.
       assertEquals("('a', 'b')", StringIntrinsics.$repr$(new PyTuple2("a", "b")));
       assertEquals("(1, 'two', True)",
           StringIntrinsics.$repr$(new PyTupleN(new Object[] {1L, "two", true})));
+    }
+
+    @Test
+    public void reprTupleWithFloat() {
+      assertEquals("(1.5,)", StringIntrinsics.$repr$(new PyTuple1(1.5)));
+      assertEquals("(0.1, 1.0)", StringIntrinsics.$repr$(new PyTuple2(0.1, 1.0)));
+      assertEquals("(-0.0,)", StringIntrinsics.$repr$(new PyTuple1(-0.0)));
     }
 
     @Test
@@ -122,6 +147,13 @@ public final class StringIntrinsicsTest {
       var ex = assertThrows(UnimplementedFeatureError.class,
           () -> StringIntrinsics.$repr$(new Object()));
       assertEquals("str of java.lang.Object", ex.getMessage());
+    }
+
+    @Test
+    public void reprCharacterUnsupported() {
+      var ex = assertThrows(UnimplementedFeatureError.class,
+          () -> StringIntrinsics.$repr$('c'));
+      assertEquals("str of java.lang.Character", ex.getMessage());
     }
   }
 
@@ -134,7 +166,6 @@ public final class StringIntrinsicsTest {
       assertEquals("nan", StringIntrinsics.$str$(Double.NaN));
       assertEquals("inf", StringIntrinsics.$str$(Double.POSITIVE_INFINITY));
       assertEquals("-inf", StringIntrinsics.$str$(Double.NEGATIVE_INFINITY));
-      // `repr` uses the same formatting for floats.
       assertEquals("nan", StringIntrinsics.$repr$(Double.NaN));
       assertEquals("inf", StringIntrinsics.$repr$(Double.POSITIVE_INFINITY));
       assertEquals("-inf", StringIntrinsics.$repr$(Double.NEGATIVE_INFINITY));
@@ -150,7 +181,6 @@ public final class StringIntrinsicsTest {
 
     @Test
     public void floatIntegralValuesKeepDotZero() {
-      // A float must remain distinguishable from the int of the same value.
       assertEquals("1.0", StringIntrinsics.$str$(1.0));
       assertEquals("2.0", StringIntrinsics.$str$(2.0));
       assertEquals("-3.0", StringIntrinsics.$str$(-3.0));
@@ -169,41 +199,58 @@ public final class StringIntrinsicsTest {
 
     @Test
     public void floatScientificThresholds() {
-      // CPython uses scientific for exponent < -4 or >= 16.
-      // Just inside the plain range:
-      assertEquals("0.0001", StringIntrinsics.$str$(1e-4));         // exponent -4
-      assertEquals("1000000000000000.0", StringIntrinsics.$str$(1e15)); // exponent 15
-      // Just outside:
-      assertEquals("1e-05", StringIntrinsics.$str$(1e-5));          // exponent -5
-      assertEquals("1e+16", StringIntrinsics.$str$(1e16));          // exponent 16
+      assertEquals("0.0001", StringIntrinsics.$str$(1e-4));
+      assertEquals("1000000000000000.0", StringIntrinsics.$str$(1e15));
+      assertEquals("1e-05", StringIntrinsics.$str$(1e-5));
+      assertEquals("1e+16", StringIntrinsics.$str$(1e16));
+    }
+
+    @Test
+    public void floatScientificThresholdsWithMantissa() {
+      // decpt == -3 → plain
+      assertEquals("0.00015", StringIntrinsics.$str$(1.5e-4));
+      // decpt == -4 → scientific
+      assertEquals("1.5e-05", StringIntrinsics.$str$(1.5e-5));
+      // decpt == 16 → plain
+      assertEquals("1500000000000000.0", StringIntrinsics.$str$(1.5e15));
+      // decpt == 17 → scientific
+      assertEquals("1.5e+16", StringIntrinsics.$str$(1.5e16));
     }
 
     @Test
     public void floatScientificExponentFormat() {
-      // Two-digit zero-padded minimum.
       assertEquals("1e+16", StringIntrinsics.$str$(1e16));
       assertEquals("1e-16", StringIntrinsics.$str$(1e-16));
-      // Three-digit stays as-is.
       assertEquals("1e+100", StringIntrinsics.$str$(1e100));
       assertEquals("1e-100", StringIntrinsics.$str$(1e-100));
     }
 
     @Test
     public void floatExtremes() {
-      // MAX_VALUE has exponent 308 → scientific.
       assertEquals("1.7976931348623157e+308",
           StringIntrinsics.$str$(Double.MAX_VALUE));
       assertEquals("-1.7976931348623157e+308",
           StringIntrinsics.$str$(-Double.MAX_VALUE));
-      // Smallest denormal is "5e-324" — the shortest round-trip,
-      // not "4.9e-324".
       assertEquals("5e-324", StringIntrinsics.$str$(Double.MIN_VALUE));
       assertEquals("-5e-324", StringIntrinsics.$str$(-Double.MIN_VALUE));
     }
 
     @Test
+    public void floatStrAndReprAreIdentical() {
+      var values = new double[] {
+          0.0, -0.0, 1.0, -1.0, 0.1, 1.0 / 3.0, Math.PI, Math.E,
+          1e-4, 1e-5, 1e15, 1e16, 1e100, 1e-100,
+          Double.MIN_VALUE, Double.MIN_NORMAL, Double.MAX_VALUE,
+          -Double.MAX_VALUE
+      };
+      for (var v : values) {
+        assertEquals(StringIntrinsics.$repr$(v), StringIntrinsics.$str$(v),
+            "str and repr differ for " + v);
+      }
+    }
+
+    @Test
     public void floatRoundTrip() {
-      // The shortest decimal representation must parse back to the same double.
       var values = new double[] {
           0.1, 1.0 / 3.0, Math.PI, Math.E, 1.1, 2.2, 3.3,
           Double.MIN_NORMAL, Double.MIN_VALUE, Double.MAX_VALUE,
@@ -234,12 +281,20 @@ public final class StringIntrinsicsTest {
 
     @Test
     public void quoteSelection() {
-      // Only single quotes → prefer double quotes.
       assertEquals("\"it's\"", StringIntrinsics.$repr$("it's"));
-      // Only double quotes → prefer single quotes.
       assertEquals("'say \"hi\"'", StringIntrinsics.$repr$("say \"hi\""));
-      // Both present → fall back to single quotes and escape them.
       assertEquals("'a\\'b\"c'", StringIntrinsics.$repr$("a'b\"c"));
+    }
+
+    @Test
+    public void tripleQuotesAreNotSpecial() {
+      assertEquals("\"'''\"", StringIntrinsics.$repr$("'''"));
+      assertEquals("'\"\"\"'", StringIntrinsics.$repr$("\"\"\""));
+    }
+
+    @Test
+    public void combinedQuoteAndBackslash() {
+      assertEquals("'a\\'b\"c\\\\d'", StringIntrinsics.$repr$("a'b\"c\\d"));
     }
 
     @Test
@@ -259,37 +314,45 @@ public final class StringIntrinsicsTest {
     }
 
     @Test
+    public void latin1ControlCharacters() {
+      assertEquals("'\\x80'", StringIntrinsics.$repr$("\u0080"));
+      assertEquals("'\\x85'", StringIntrinsics.$repr$("\u0085")); // NEL
+      assertEquals("'\\x9f'", StringIntrinsics.$repr$("\u009f"));
+    }
+
+    @Test
     public void nonPrintableUnicodeUsesEscapes() {
-      // Non-breaking space (category Zs → space separator).
       assertEquals("'\\xa0'", StringIntrinsics.$repr$("\u00a0"));
-      // Zero-width space (category Cf → format).
       assertEquals("'\\u200b'", StringIntrinsics.$repr$("\u200b"));
-      // Private-use area.
       assertEquals("'\\ue000'", StringIntrinsics.$repr$("\ue000"));
-      // Line separator.
       assertEquals("'\\u2028'", StringIntrinsics.$repr$("\u2028"));
-      // Paragraph separator.
       assertEquals("'\\u2029'", StringIntrinsics.$repr$("\u2029"));
     }
 
     @Test
+    public void loneHighSurrogate() {
+      assertEquals("'\\ud800'", StringIntrinsics.$repr$("\uD800"));
+    }
+
+    @Test
     public void printableUnicodeIsNotEscaped() {
-      // Letter (Lu).
       assertEquals("'\u0100'", StringIntrinsics.$repr$("\u0100"));
-      // Combining mark (Mn).
       assertEquals("'\u0300'", StringIntrinsics.$repr$("\u0300"));
     }
 
     @Test
     public void supplementaryCharacters() {
-      // Supplementary letter (Deseret capital long I, U+10400) — printable.
       assertEquals("'\uD801\uDC00'",
           StringIntrinsics.$repr$("\uD801\uDC00"));
-      // Emoji (So) — printable.
       assertEquals("'😀'", StringIntrinsics.$repr$("😀"));
-      // Supplementary private-use is not printable → \U form.
       assertEquals("'\\U000f0000'",
           StringIntrinsics.$repr$("\uDB80\uDC00")); // U+F0000
+    }
+
+    @Test
+    public void supplementaryPrivateUseAreaB() {
+      assertEquals("'\\U00100000'",
+          StringIntrinsics.$repr$("\uDBC0\uDC00")); // U+100000
     }
   }
 
@@ -302,19 +365,29 @@ public final class StringIntrinsicsTest {
 
     @Test
     public void exactlyAtLimitIsAccepted() {
-      var atLimit = BigInteger.TEN.pow(LIMIT - 1);       // 1 followed by 4299 zeros
+      var atLimit = BigInteger.TEN.pow(LIMIT - 1);
       assertEquals(atLimit.toString(), StringIntrinsics.$str$(atLimit));
       assertEquals(atLimit.toString(), StringIntrinsics.$repr$(atLimit));
-      // Sign is not counted.
       assertEquals(atLimit.negate().toString(), StringIntrinsics.$str$(atLimit.negate()));
     }
 
     @Test
     public void oneBeyondLimitIsRejected() {
-      var beyond = BigInteger.TEN.pow(LIMIT);            // 1 followed by 4300 zeros
+      var beyond = BigInteger.TEN.pow(LIMIT);
       assertThrows(PyValueError.class, () -> StringIntrinsics.$str$(beyond));
       assertThrows(PyValueError.class, () -> StringIntrinsics.$str$(beyond.negate()));
       assertThrows(PyValueError.class, () -> StringIntrinsics.$repr$(beyond));
+    }
+
+    @Test
+    public void limitAppliesInsideTuple() {
+      var atLimit = BigInteger.TEN.pow(LIMIT - 1);
+      assertEquals("(" + atLimit + ",)", StringIntrinsics.$str$(new PyTuple1(atLimit)));
+      var beyond = BigInteger.TEN.pow(LIMIT);
+      assertThrows(PyValueError.class,
+          () -> StringIntrinsics.$str$(new PyTuple1(beyond)));
+      assertThrows(PyValueError.class,
+          () -> StringIntrinsics.$repr$(new PyTuple1(beyond)));
     }
 
     @Test
@@ -335,7 +408,6 @@ public final class StringIntrinsicsTest {
 
     @Test
     public void unsupportedStrMessages() {
-      // Message includes the runtime class name.
       assertEquals("str of java.lang.Object",
           assertThrows(UnimplementedFeatureError.class,
               () -> StringIntrinsics.$str$(new Object())).getMessage());
@@ -349,6 +421,9 @@ public final class StringIntrinsicsTest {
       assertEquals("str of java.lang.Object",
           assertThrows(UnimplementedFeatureError.class,
               () -> StringIntrinsics.$repr$(new Object())).getMessage());
+      assertEquals("str of java.lang.Character",
+          assertThrows(UnimplementedFeatureError.class,
+              () -> StringIntrinsics.$repr$('c')).getMessage());
     }
   }
 }
