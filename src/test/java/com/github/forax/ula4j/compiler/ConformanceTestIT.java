@@ -30,7 +30,8 @@ public final class ConformanceTestIT {
         return Files.list(BASICS_DIR)
                 .filter(p -> p.toString().endsWith(".py"))
                 .filter(p -> Files.exists(toGolden(p)))
-                .map(BASICS_DIR::relativize);
+                .map(BASICS_DIR::relativize)
+                .sorted();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -48,8 +49,8 @@ public final class ConformanceTestIT {
         // 3. Capture stdout while running the ula4j runtime
         String actual;
         var originalOut = System.out;
-        try (var baos = new ByteArrayOutputStream();
-             var capture = new PrintStream(baos)) {
+        try (var out = new ByteArrayOutputStream();
+             var capture = new PrintStream(out)) {
             System.setOut(capture);
             //System.setErr(capture);
 
@@ -62,7 +63,7 @@ public final class ConformanceTestIT {
             }
 
             // Capture the result
-            actual = baos.toString();
+            actual = out.toString();
         } finally {
             System.setOut(originalOut);
             //System.setErr(originalErr);
