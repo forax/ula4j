@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
@@ -21,6 +22,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class ArithmeticIntrinsicsTest {
+
+  private static PyTuple pyTuple(Object... elements) {
+    return TupleIntrinsics.fromArray(elements);
+  }
+
+  @SafeVarargs
+  private static <E> PyList<E> pyList(E... elements) {
+    return new PyList<>(elements);
+  }
+
 
   @Nested
   public final class Add {
@@ -63,8 +74,8 @@ public final class ArithmeticIntrinsicsTest {
 
     @Test
     public void addTupleConcatenation() {
-      var left = new PyTuple1(1L);
-      var right = new PyTuple2("a", "b");
+      var left = pyTuple(1L);
+      var right = pyTuple("a", "b");
       var result = (PyTuple) ArithmeticIntrinsics.$add$(left, right);
       assertEquals(3L, TupleIntrinsics.$size$(result));
       assertEquals(1L, TupleIntrinsics.$get$(result, 0L));
@@ -81,7 +92,7 @@ public final class ArithmeticIntrinsicsTest {
       // Tuple + String goes through the tuple branch (left is a tuple).
       assertEquals(
           "can only concatenate tuple (not \"str\") to tuple",
-          assertThrows(PyTypeError.class, () -> ArithmeticIntrinsics.$add$(new PyTuple1(1L), "x")).getMessage());
+          assertThrows(PyTypeError.class, () -> ArithmeticIntrinsics.$add$(pyTuple(1L), "x")).getMessage());
     }
 
     @Test
@@ -140,8 +151,8 @@ public final class ArithmeticIntrinsicsTest {
 
     @Test
     public void addEmptyTuples() {
-      var empty = new PyTupleN(new Object[0]);
-      var t1 = new PyTuple1(1L);
+      var empty = pyTuple(new Object[0]);
+      var t1 = pyTuple(1L);
       assertEquals(0L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$add$(empty, empty)));
       assertEquals(1L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$add$(empty, t1)));
       assertEquals(1L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$add$(t1, empty)));
@@ -151,8 +162,8 @@ public final class ArithmeticIntrinsicsTest {
     public void addTuplePreservesElements() {
       var a = new Object();
       var b = new Object();
-      var left = new PyTuple1(a);
-      var right = new PyTuple1(b);
+      var left = pyTuple(a);
+      var right = pyTuple(b);
       var result = (PyTuple) ArithmeticIntrinsics.$add$(left, right);
       assertSame(a, TupleIntrinsics.$get$(result, 0L));
       assertSame(b, TupleIntrinsics.$get$(result, 1L));
@@ -266,7 +277,7 @@ public final class ArithmeticIntrinsicsTest {
 
     @Test
     public void tupleRepeat() {
-      var tuple = new PyTuple2(1L, 2L);
+      var tuple = pyTuple(1L, 2L);
       var result = (PyTuple) ArithmeticIntrinsics.$mul$(tuple, 3L);
       assertEquals(6L, TupleIntrinsics.$size$(result));
       for (int i = 0; i < 6; i++) {
@@ -279,7 +290,7 @@ public final class ArithmeticIntrinsicsTest {
       assertEquals(0L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$mul$(tuple, 0L)));
       assertEquals(0L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$mul$(tuple, -1L)));
       // Empty tuple * n stays empty.
-      var empty = new PyTupleN(new Object[0]);
+      var empty = pyTuple(new Object[0]);
       assertEquals(0L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$mul$(empty, 5L)));
     }
 
@@ -306,7 +317,7 @@ public final class ArithmeticIntrinsicsTest {
       assertThrows(UnimplementedFeatureError.class,
           () -> ArithmeticIntrinsics.$mul$("ab", (long) Integer.MAX_VALUE));
       assertThrows(UnimplementedFeatureError.class,
-          () -> ArithmeticIntrinsics.$mul$(new PyTuple2(1L, 2L), (long) Integer.MAX_VALUE));
+          () -> ArithmeticIntrinsics.$mul$(pyTuple(1L, 2L), (long) Integer.MAX_VALUE));
     }
 
     @Test
@@ -347,7 +358,7 @@ public final class ArithmeticIntrinsicsTest {
     @Test
     public void tupleRepeatPreservesIdentity() {
       var obj = new Object();
-      var tuple = new PyTuple1(obj);
+      var tuple = pyTuple(obj);
       var result = (PyTuple) ArithmeticIntrinsics.$mul$(tuple, 3L);
       for (int i = 0; i < 3; i++) {
         assertSame(obj, TupleIntrinsics.$get$(result, (long) i));
