@@ -236,7 +236,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < size; i++) {
       Object a = TupleIntrinsics.$get$(left, (long) i);
       Object b = TupleIntrinsics.$get$(right, (long) i);
-      if (!$eq$(a, b)) {
+      if (a != b && !$eq$(a, b)) {  // reference shortcut
         return false;
       }
     }
@@ -252,7 +252,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < common; i++) {
       Object a = TupleIntrinsics.$get$(left, (long) i);
       Object b = TupleIntrinsics.$get$(right, (long) i);
-      if (!$eq$(a, b)) {
+      if (a != b && !$eq$(a, b)) {  // reference shortcut
         return orderItems(a, b, op);
       }
     }

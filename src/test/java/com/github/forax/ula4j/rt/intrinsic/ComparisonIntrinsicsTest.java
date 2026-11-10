@@ -4,6 +4,7 @@ import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
 import com.github.forax.ula4j.rt.error.PyTypeError;
+import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -123,6 +124,55 @@ public final class ComparisonIntrinsicsTest {
       assertFalse(ComparisonIntrinsics.$ne$(PyNone.INSTANCE, PyNone.INSTANCE));
       assertTrue(ComparisonIntrinsics.$ne$(1L, "1"));
     }
+
+    @Test
+    public void equalityOfLongAndDoubleBothDirections() {
+      assertTrue(ComparisonIntrinsics.$eq$(1L, 1.0));
+      assertTrue(ComparisonIntrinsics.$eq$(1.0, 1L));
+      assertFalse(ComparisonIntrinsics.$eq$(1L, 1.5));
+      assertFalse(ComparisonIntrinsics.$eq$(1.5, 1L));
+      assertTrue(ComparisonIntrinsics.$eq$(0L, 0.0));
+      assertTrue(ComparisonIntrinsics.$eq$(0.0, 0L));
+      assertTrue(ComparisonIntrinsics.$eq$(0L, -0.0));
+      assertTrue(ComparisonIntrinsics.$eq$(-0.0, 0L));
+      assertFalse(ComparisonIntrinsics.$eq$(10L, 10.0000001));
+    }
+
+    @Test
+    public void equalityOfBooleansAndDoublesBothDirections() {
+      assertTrue(ComparisonIntrinsics.$eq$(true, 1.0));
+      assertTrue(ComparisonIntrinsics.$eq$(1.0, true));
+      assertTrue(ComparisonIntrinsics.$eq$(false, 0.0));
+      assertTrue(ComparisonIntrinsics.$eq$(0.0, false));
+      assertTrue(ComparisonIntrinsics.$eq$(false, -0.0));
+      assertFalse(ComparisonIntrinsics.$eq$(true, 0.0));
+      assertFalse(ComparisonIntrinsics.$eq$(0.0, true));
+    }
+
+    @Test
+    public void equalityOfLongAndDoubleAtBoundary() {
+      // (double) Long.MAX_VALUE rounds to 2**63, which is not Long.MAX_VALUE.
+      assertFalse(ComparisonIntrinsics.$eq$(Long.MAX_VALUE, (double) Long.MAX_VALUE));
+      assertFalse(ComparisonIntrinsics.$eq$((double) Long.MAX_VALUE, Long.MAX_VALUE));
+      // Long.MIN_VALUE == -2**63 is exactly representable.
+      assertTrue(ComparisonIntrinsics.$eq$(Long.MIN_VALUE, (double) Long.MIN_VALUE));
+      assertTrue(ComparisonIntrinsics.$eq$((double) Long.MIN_VALUE, Long.MIN_VALUE));
+    }
+
+    @Test
+    public void equalityWithUnsupportedTypeThrows() {
+      // Equality is only defined for supported runtime types for now.
+      assertThrows(UnimplementedFeatureError.class,
+          () -> ComparisonIntrinsics.$eq$(new Object(), new Object()));
+      assertThrows(UnimplementedFeatureError.class,
+          () -> ComparisonIntrinsics.$ne$(new Object(), new Object()));
+      // The dispatcher is driven by the *left* operand.
+      assertThrows(UnimplementedFeatureError.class,
+          () -> ComparisonIntrinsics.$eq$(new Object(), PyNone.INSTANCE));
+      // …but a supported left operand gracefully returns false.
+      assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, new Object()));
+      assertFalse(ComparisonIntrinsics.$eq$(1L, new Object()));
+    }
   }
 
 
@@ -178,6 +228,57 @@ public final class ComparisonIntrinsicsTest {
       assertTrue(ComparisonIntrinsics.$gt$(huge, Long.MAX_VALUE));
       assertTrue(ComparisonIntrinsics.$gt$(huge.add(BigInteger.ONE), 0x1p1000));
       assertTrue(ComparisonIntrinsics.$lt$(huge.negate().subtract(BigInteger.ONE), -0x1p1000));
+    }
+
+    @Test
+    public void bigIntegerVsInfinity() {
+      var huge = BigInteger.ONE.shiftLeft(1000);
+      assertTrue(ComparisonIntrinsics.$lt$(huge, Double.POSITIVE_INFINITY));
+      assertFalse(ComparisonIntrinsics.$gt$(huge, Double.POSITIVE_INFINITY));
+      assertTrue(ComparisonIntrinsics.$gt$(huge, Double.NEGATIVE_INFINITY));
+      assertFalse(ComparisonIntrinsics.$lt$(huge, Double.NEGATIVE_INFINITY));
+      var negHuge = huge.negate();
+      assertTrue(ComparisonIntrinsics.$lt$(negHuge, Double.POSITIVE_INFINITY));
+      assertTrue(ComparisonIntrinsics.$gt$(negHuge, Double.NEGATIVE_INFINITY));
+      // Longs too.
+      assertTrue(ComparisonIntrinsics.$lt$(Long.MAX_VALUE, Double.POSITIVE_INFINITY));
+      assertTrue(ComparisonIntrinsics.$gt$(Long.MAX_VALUE, Double.NEGATIVE_INFINITY));
+      assertTrue(ComparisonIntrinsics.$lt$(Long.MIN_VALUE, Double.POSITIVE_INFINITY));
+      assertTrue(ComparisonIntrinsics.$gt$(Long.MIN_VALUE, Double.NEGATIVE_INFINITY));
+    }
+
+    @Test
+    public void exactLongDoubleWithFraction() {
+      assertTrue(ComparisonIntrinsics.$lt$(1L, 1.5));
+      assertFalse(ComparisonIntrinsics.$lt$(2L, 1.5));
+      assertTrue(ComparisonIntrinsics.$gt$(2L, 1.5));
+      assertFalse(ComparisonIntrinsics.$gt$(1L, 1.5));
+      assertTrue(ComparisonIntrinsics.$lt$(0L, 0.5));
+      assertTrue(ComparisonIntrinsics.$gt$(0L, -0.5));
+      assertTrue(ComparisonIntrinsics.$lt$(-1L, -0.5));
+      assertFalse(ComparisonIntrinsics.$lt$(-1L, -1.5));
+      assertTrue(ComparisonIntrinsics.$gt$(-1L, -1.5));
+    }
+
+    @Test
+    public void exactLongDoubleAtZero() {
+      assertTrue(ComparisonIntrinsics.$le$(0L, -0.0));
+      assertTrue(ComparisonIntrinsics.$ge$(0L, -0.0));
+      assertTrue(ComparisonIntrinsics.$le$(-0.0, 0L));
+      assertTrue(ComparisonIntrinsics.$ge$(-0.0, 0L));
+      assertFalse(ComparisonIntrinsics.$lt$(0L, -0.0));
+      assertFalse(ComparisonIntrinsics.$gt$(0L, -0.0));
+      assertFalse(ComparisonIntrinsics.$lt$(-0.0, 0L));
+      assertFalse(ComparisonIntrinsics.$gt$(-0.0, 0L));
+    }
+
+    @Test
+    public void orderingTinyFractionalDouble() {
+      // Smallest positive subnormal double, 0x1p-1074, truncates to 0.
+      assertTrue(ComparisonIntrinsics.$lt$(0L, 0x1p-1074));
+      assertTrue(ComparisonIntrinsics.$gt$(0x1p-1074, 0L));
+      assertTrue(ComparisonIntrinsics.$gt$(0L, -0x1p-1074));
+      assertFalse(ComparisonIntrinsics.$eq$(0L, 0x1p-1074));
     }
   }
 
@@ -268,6 +369,42 @@ public final class ComparisonIntrinsicsTest {
       assertFalse(ComparisonIntrinsics.$le$(1L, Double.NaN));
       assertFalse(ComparisonIntrinsics.$ge$(Double.NaN, 1L));
     }
+
+    @Test
+    public void orderingOfBigIntegers() {
+      assertTrue(ComparisonIntrinsics.$lt$(BigInteger.ONE, BigInteger.TEN));
+      assertFalse(ComparisonIntrinsics.$lt$(BigInteger.TEN, BigInteger.ONE));
+      assertTrue(ComparisonIntrinsics.$gt$(BigInteger.TEN, BigInteger.ONE));
+      assertTrue(ComparisonIntrinsics.$le$(BigInteger.TEN, BigInteger.TEN));
+      assertTrue(ComparisonIntrinsics.$ge$(BigInteger.TEN, BigInteger.TEN));
+      assertFalse(ComparisonIntrinsics.$lt$(BigInteger.TEN, BigInteger.TEN));
+      assertTrue(ComparisonIntrinsics.$gt$(BigInteger.ZERO, BigInteger.ONE.negate()));
+      var a = BigInteger.ONE.shiftLeft(1000);
+      var b = BigInteger.ONE.shiftLeft(1001);
+      assertTrue(ComparisonIntrinsics.$lt$(a, b));
+      assertTrue(ComparisonIntrinsics.$gt$(b, a));
+    }
+
+    @Test
+    public void orderingBetweenLongAndBigInteger() {
+      assertTrue(ComparisonIntrinsics.$lt$(1L, BigInteger.TEN));
+      assertTrue(ComparisonIntrinsics.$gt$(BigInteger.TEN, 1L));
+      assertTrue(ComparisonIntrinsics.$lt$(BigInteger.TEN, 100L));
+      assertTrue(ComparisonIntrinsics.$gt$(100L, BigInteger.TEN));
+      assertTrue(ComparisonIntrinsics.$le$(BigInteger.TEN, 10L));
+      assertTrue(ComparisonIntrinsics.$ge$(10L, BigInteger.TEN));
+      assertFalse(ComparisonIntrinsics.$lt$(BigInteger.TEN, 10L));
+      assertFalse(ComparisonIntrinsics.$gt$(BigInteger.TEN, 10L));
+    }
+
+    @Test
+    public void orderingOfBooleansAndBigIntegers() {
+      assertTrue(ComparisonIntrinsics.$lt$(false, BigInteger.TEN));
+      assertTrue(ComparisonIntrinsics.$lt$(true, BigInteger.TEN));
+      assertTrue(ComparisonIntrinsics.$gt$(BigInteger.TEN, true));
+      assertTrue(ComparisonIntrinsics.$le$(true, BigInteger.ONE));
+      assertTrue(ComparisonIntrinsics.$ge$(BigInteger.ONE, true));
+    }
   }
 
   @Nested
@@ -309,6 +446,31 @@ public final class ComparisonIntrinsicsTest {
       assertTrue(ComparisonIntrinsics.$gt$("\uD800\uDC00", "\uD800\uFFFF"));
       assertTrue(ComparisonIntrinsics.$lt$("\uD800\uFFFF", "\uD800\uDC00"));
     }
+
+    @Test
+    public void emptyStringComparisons() {
+      assertTrue(ComparisonIntrinsics.$le$("", ""));
+      assertTrue(ComparisonIntrinsics.$ge$("", ""));
+      assertFalse(ComparisonIntrinsics.$lt$("", ""));
+      assertFalse(ComparisonIntrinsics.$gt$("", ""));
+    }
+
+    @Test
+    public void loneSurrogateCodePointOrdering() {
+      // Lone surrogates are still valid code points.
+      assertTrue(ComparisonIntrinsics.$lt$("\uD800", "\uD801"));
+      assertFalse(ComparisonIntrinsics.$lt$("\uD801", "\uD800"));
+      // D800 (lone high surrogate, 0xD800) < FFFF (0xFFFF).
+      assertTrue(ComparisonIntrinsics.$lt$("\uD800", "\uFFFF"));
+      assertTrue(ComparisonIntrinsics.$gt$("\uFFFF", "\uD800"));
+    }
+
+    @Test
+    public void prefixWithSurrogatePair() {
+      // 'a' == 'a', then U+1F600 vs 'b' (0x62) → U+1F600 greater.
+      assertFalse(ComparisonIntrinsics.$lt$("a\uD83D\uDE00", "ab"));
+      assertTrue(ComparisonIntrinsics.$gt$("a\uD83D\uDE00", "ab"));
+    }
   }
 
 
@@ -343,7 +505,48 @@ public final class ComparisonIntrinsicsTest {
       assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(nan), new PyTuple1(nan)));
       assertTrue(ComparisonIntrinsics.$eq$(new PyTuple2(nan, 1L), new PyTuple2(nan, 1L)));
     }
+
+    @Test
+    public void tupleWithDistinctNaNObjects() {
+      // Two freshly-boxed NaN objects are not the same reference; NaN != NaN,
+      // so the tuples are not equal.
+      assertFalse(ComparisonIntrinsics.$eq$(
+          new PyTuple1(Double.NaN), new PyTuple1(Double.NaN)));
+      assertFalse(ComparisonIntrinsics.$eq$(
+          new PyTuple2(Double.NaN, 1L), new PyTuple2(Double.NaN, 1L)));
+    }
+
+    @Test
+    public void tupleMixedNumericTypes() {
+      // bool, int and float all compare numerically inside tuples.
+      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(true), new PyTuple1(1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1(true)));
+      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1(1.0)));
+      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1.0), new PyTuple1(1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(0L), new PyTuple1(false)));
+      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(0L), new PyTuple1(-0.0)));
+      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(true), new PyTuple1(0L)));
+    }
+
+    @Test
+    public void tupleWithIncompatibleElementTypes() {
+      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1("1")));
+      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(true), new PyTuple1("true")));
+      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(0L), new PyTuple1(PyNone.INSTANCE)));
+      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(PyNone.INSTANCE), new PyTuple1(0L)));
+    }
+
+    @Test
+    public void nestedTuplesWithPyNone() {
+      assertTrue(ComparisonIntrinsics.$eq$(
+          new PyTuple1(new PyTuple1(PyNone.INSTANCE)),
+          new PyTuple1(new PyTuple1(PyNone.INSTANCE))));
+      assertFalse(ComparisonIntrinsics.$eq$(
+          new PyTuple1(new PyTuple1(PyNone.INSTANCE)),
+          new PyTuple1(new PyTuple1(0L))));
+    }
   }
+
 
   @Nested
   public final class TupleOrdering {
@@ -378,6 +581,58 @@ public final class ComparisonIntrinsicsTest {
       // Tuples with the same length and NaN are equal (identity shortcut).
       assertTrue(ComparisonIntrinsics.$le$(new PyTuple1(nan), new PyTuple1(nan)));
       assertTrue(ComparisonIntrinsics.$ge$(new PyTuple1(nan), new PyTuple1(nan)));
+    }
+
+    @Test
+    public void tupleOrderingMixedNumericTypes() {
+      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(false), new PyTuple1(true)));
+      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(true), new PyTuple1(2L)));
+      assertTrue(ComparisonIntrinsics.$gt$(new PyTuple1(2L), new PyTuple1(true)));
+      assertTrue(ComparisonIntrinsics.$le$(new PyTuple1(0L), new PyTuple1(false)));
+    }
+
+    @Test
+    public void tupleOrderingNestedDifferentLengths() {
+      assertTrue(ComparisonIntrinsics.$lt$(
+          new PyTuple1(new PyTuple1(1L)),
+          new PyTuple1(new PyTuple2(1L, 0L))));
+      assertTrue(ComparisonIntrinsics.$gt$(
+          new PyTuple1(new PyTuple2(1L, 0L)),
+          new PyTuple1(new PyTuple1(1L))));
+    }
+
+    @Test
+    public void tupleOrderingWithNaNSecond() {
+      Double nan = Double.NaN;
+      // NaN is unordered w.r.t. anything, so all four operators report false
+      // as soon as the comparison reaches the NaN item.
+      assertFalse(ComparisonIntrinsics.$lt$(new PyTuple2(1L, nan), new PyTuple2(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$gt$(new PyTuple2(1L, nan), new PyTuple2(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$lt$(new PyTuple2(1L, 2L), new PyTuple2(1L, nan)));
+      assertFalse(ComparisonIntrinsics.$gt$(new PyTuple2(1L, 2L), new PyTuple2(1L, nan)));
+    }
+
+    @Test
+    public void tupleOrderingUsesExactNumericComparison() {
+      // 2**53 + 1 vs 2**53 (as a double): exact comparison says >.
+      assertTrue(ComparisonIntrinsics.$gt$(
+          new PyTuple1(9007199254740993L), new PyTuple1(9007199254740992.0)));
+      assertTrue(ComparisonIntrinsics.$lt$(
+          new PyTuple1(9007199254740992.0), new PyTuple1(9007199254740993L)));
+    }
+
+    @Test
+    public void tupleOrderingLongVsDoubleAtBoundary() {
+      // Long.MAX_VALUE (2**63 - 1) < 2**63, even though (double)Long.MAX_VALUE == 2**63.
+      assertTrue(ComparisonIntrinsics.$lt$(
+          new PyTuple1(Long.MAX_VALUE), new PyTuple1(0x1p63)));
+      assertTrue(ComparisonIntrinsics.$gt$(
+          new PyTuple1(0x1p63), new PyTuple1(Long.MAX_VALUE)));
+      // Long.MIN_VALUE == -2**63 exactly.
+      assertTrue(ComparisonIntrinsics.$le$(
+          new PyTuple1(Long.MIN_VALUE), new PyTuple1(-0x1p63)));
+      assertTrue(ComparisonIntrinsics.$ge$(
+          new PyTuple1(Long.MIN_VALUE), new PyTuple1(-0x1p63)));
     }
   }
 
@@ -415,6 +670,38 @@ public final class ComparisonIntrinsicsTest {
       var e = assertThrows(PyTypeError.class,
           () -> ComparisonIntrinsics.$lt$(PyNone.INSTANCE, PyNone.INSTANCE));
       assertEquals("'<' not supported between instances of 'NoneType' and 'NoneType'", e.getMessage());
+    }
+
+    @Test
+    public void orderingPyNoneVsIntIsATypeError() {
+      var e = assertThrows(PyTypeError.class,
+          () -> ComparisonIntrinsics.$lt$(PyNone.INSTANCE, 1L));
+      assertEquals("'<' not supported between instances of 'NoneType' and 'int'",
+          e.getMessage());
+    }
+
+    @Test
+    public void orderingPyNoneVsStrIsATypeError() {
+      var e = assertThrows(PyTypeError.class,
+          () -> ComparisonIntrinsics.$lt$(PyNone.INSTANCE, "a"));
+      assertEquals("'<' not supported between instances of 'NoneType' and 'str'",
+          e.getMessage());
+    }
+
+    @Test
+    public void orderingStrVsIntIsATypeError() {
+      var e = assertThrows(PyTypeError.class,
+          () -> ComparisonIntrinsics.$lt$("a", 1L));
+      assertEquals("'<' not supported between instances of 'str' and 'int'",
+          e.getMessage());
+    }
+
+    @Test
+    public void orderingIntVsNoneIsATypeError() {
+      var e = assertThrows(PyTypeError.class,
+          () -> ComparisonIntrinsics.$lt$(1L, PyNone.INSTANCE));
+      assertEquals("'<' not supported between instances of 'int' and 'NoneType'",
+          e.getMessage());
     }
   }
 }
