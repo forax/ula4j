@@ -69,6 +69,12 @@ public final class ComparisonIntrinsics {
           default -> { return false; }
         }
       }
+      case PyList<?> l -> {
+        switch (right) {
+          case PyList<?> r -> { return listEquals(l, r); }
+          default -> { return false; }
+        }
+      }
       // TODO PyList, PyDict, PyRange, PySlice, PyFunction, PyType
       default -> throw unimplemented("==", left);
     }
@@ -185,6 +191,21 @@ public final class ComparisonIntrinsics {
     return isNumber(right) && compareNumbers(left, right) == EQUAL;
   }
 
+  private static boolean listEquals(PyList<?> left, PyList<?> right) {
+    var size = left.size();
+    if (size != right.size()) {
+      return false;
+    }
+    for (var i = 0; i < size; i++) {
+      Object a = left.get(i);
+      Object b = right.get(i);
+      if (a != b && !$eq$(a, b)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private static boolean orderGeneric(Object left, Object right, int op) {
     if (isNumber(left) && isNumber(right)) {
       return holds(op, compareNumbers(left, right));
@@ -267,7 +288,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < common; i++) {
       Object a = left.get(i);
       Object b = right.get(i);
-      if (!$eq$(a, b)) {
+      if (a != b && !$eq$(a, b)) {
         return orderItems(a, b, op);
       }
     }

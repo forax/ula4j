@@ -1,6 +1,8 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
+import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
 import com.github.forax.ula4j.rt.error.PyTypeError;
@@ -16,6 +18,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class ComparisonIntrinsicsTest {
+
+  private static PyTuple pyTuple(Object... elements) {
+    return TupleIntrinsics.fromArray(elements);
+  }
+
+  @SafeVarargs
+  private static <E> PyList<E> pyList(E... elements) {
+    return new PyList<>(elements);
+  }
+
 
   @Nested
   public final class EqualityPrimitive {
@@ -111,8 +123,8 @@ public final class ComparisonIntrinsicsTest {
       assertFalse(ComparisonIntrinsics.$eq$("", PyNone.INSTANCE));
       assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, ""));
       assertFalse(ComparisonIntrinsics.$eq$(true, "true"));
-      assertFalse(ComparisonIntrinsics.$eq$(1L, new PyTuple1(1L)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(1L), 1L));
+      assertFalse(ComparisonIntrinsics.$eq$(1L, pyTuple(1L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L), 1L));
     }
 
     @Test
@@ -479,21 +491,21 @@ public final class ComparisonIntrinsicsTest {
 
     @Test
     public void tupleEquality() {
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1(1L)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1(2L)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple2(1L, 2L), new PyTuple2(1L, 2L)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple2(1L, 2L), new PyTuple2(1L, 3L)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple2(1L, 2L), new PyTuple2(3L, 2L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(1L), pyTuple(1L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L), pyTuple(2L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(1L, 2L), pyTuple(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L, 2L), pyTuple(1L, 3L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L, 2L), pyTuple(3L, 2L)));
       // Different lengths are never equal.
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple2(1L, 2L)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple2(1L, 2L), new PyTuple1(1L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L), pyTuple(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L, 2L), pyTuple(1L)));
       // Nested tuples.
       assertTrue(ComparisonIntrinsics.$eq$(
-          new PyTuple1(new PyTuple1(1L)),
-          new PyTuple1(new PyTuple1(1L))));
+          pyTuple(pyTuple(1L)),
+          pyTuple(pyTuple(1L))));
       assertFalse(ComparisonIntrinsics.$eq$(
-          new PyTuple1(new PyTuple1(1L)),
-          new PyTuple1(new PyTuple1(2L))));
+          pyTuple(pyTuple(1L)),
+          pyTuple(pyTuple(2L))));
     }
 
     @Test
@@ -502,8 +514,8 @@ public final class ComparisonIntrinsicsTest {
       // same reference is considered equal — CPython's PyObject_RichCompareBool.
       Double nan = Double.NaN;  // boxed once; both tuples hold the same reference
       assertFalse(ComparisonIntrinsics.$eq$(nan, nan));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(nan), new PyTuple1(nan)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple2(nan, 1L), new PyTuple2(nan, 1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(nan), pyTuple(nan)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(nan, 1L), pyTuple(nan, 1L)));
     }
 
     @Test
@@ -511,39 +523,39 @@ public final class ComparisonIntrinsicsTest {
       // Two freshly-boxed NaN objects are not the same reference; NaN != NaN,
       // so the tuples are not equal.
       assertFalse(ComparisonIntrinsics.$eq$(
-          new PyTuple1(Double.NaN), new PyTuple1(Double.NaN)));
+          pyTuple(Double.NaN), pyTuple(Double.NaN)));
       assertFalse(ComparisonIntrinsics.$eq$(
-          new PyTuple2(Double.NaN, 1L), new PyTuple2(Double.NaN, 1L)));
+          pyTuple(Double.NaN, 1L), pyTuple(Double.NaN, 1L)));
     }
 
     @Test
     public void tupleMixedNumericTypes() {
       // bool, int and float all compare numerically inside tuples.
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(true), new PyTuple1(1L)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1(true)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1(1.0)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(1.0), new PyTuple1(1L)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(0L), new PyTuple1(false)));
-      assertTrue(ComparisonIntrinsics.$eq$(new PyTuple1(0L), new PyTuple1(-0.0)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(true), new PyTuple1(0L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(true), pyTuple(1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(1L), pyTuple(true)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(1L), pyTuple(1.0)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(1.0), pyTuple(1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(0L), pyTuple(false)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyTuple(0L), pyTuple(-0.0)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(true), pyTuple(0L)));
     }
 
     @Test
     public void tupleWithIncompatibleElementTypes() {
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(1L), new PyTuple1("1")));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(true), new PyTuple1("true")));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(0L), new PyTuple1(PyNone.INSTANCE)));
-      assertFalse(ComparisonIntrinsics.$eq$(new PyTuple1(PyNone.INSTANCE), new PyTuple1(0L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L), pyTuple("1")));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(true), pyTuple("true")));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(0L), pyTuple(PyNone.INSTANCE)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(PyNone.INSTANCE), pyTuple(0L)));
     }
 
     @Test
     public void nestedTuplesWithPyNone() {
       assertTrue(ComparisonIntrinsics.$eq$(
-          new PyTuple1(new PyTuple1(PyNone.INSTANCE)),
-          new PyTuple1(new PyTuple1(PyNone.INSTANCE))));
+          pyTuple(pyTuple(PyNone.INSTANCE)),
+          pyTuple(pyTuple(PyNone.INSTANCE))));
       assertFalse(ComparisonIntrinsics.$eq$(
-          new PyTuple1(new PyTuple1(PyNone.INSTANCE)),
-          new PyTuple1(new PyTuple1(0L))));
+          pyTuple(pyTuple(PyNone.INSTANCE)),
+          pyTuple(pyTuple(0L))));
     }
   }
 
@@ -553,52 +565,52 @@ public final class ComparisonIntrinsicsTest {
 
     @Test
     public void tupleOrdering() {
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(1L), new PyTuple2(1L, 0L)));
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple2(1L, 2L), new PyTuple2(1L, 3L)));
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple2(1L, 2L), new PyTuple2(2L, 0L)));
-      assertTrue(ComparisonIntrinsics.$gt$(new PyTuple2(2L, 0L), new PyTuple2(1L, 2L)));
-      assertTrue(ComparisonIntrinsics.$le$(new PyTuple2(1L, 2L), new PyTuple2(1L, 2L)));
-      assertTrue(ComparisonIntrinsics.$ge$(new PyTuple2(1L, 2L), new PyTuple2(1L, 2L)));
-      assertFalse(ComparisonIntrinsics.$lt$(new PyTuple2(1L, 2L), new PyTuple2(1L, 2L)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(1L), pyTuple(1L, 0L)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(1L, 2L), pyTuple(1L, 3L)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(1L, 2L), pyTuple(2L, 0L)));
+      assertTrue(ComparisonIntrinsics.$gt$(pyTuple(2L, 0L), pyTuple(1L, 2L)));
+      assertTrue(ComparisonIntrinsics.$le$(pyTuple(1L, 2L), pyTuple(1L, 2L)));
+      assertTrue(ComparisonIntrinsics.$ge$(pyTuple(1L, 2L), pyTuple(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$lt$(pyTuple(1L, 2L), pyTuple(1L, 2L)));
       // Common prefix, shorter is smaller.
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(1L), new PyTuple2(1L, 2L)));
-      assertTrue(ComparisonIntrinsics.$gt$(new PyTuple2(1L, 2L), new PyTuple1(1L)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(1L), pyTuple(1L, 2L)));
+      assertTrue(ComparisonIntrinsics.$gt$(pyTuple(1L, 2L), pyTuple(1L)));
       // String elements inside tuples.
       assertTrue(ComparisonIntrinsics.$lt$(
-          new PyTuple2("a", 1L), new PyTuple2("b", 0L)));
+          pyTuple("a", 1L), pyTuple("b", 0L)));
       // Nested tuples.
       assertTrue(ComparisonIntrinsics.$lt$(
-          new PyTuple1(new PyTuple1(1L)),
-          new PyTuple1(new PyTuple1(2L))));
+          pyTuple(pyTuple(1L)),
+          pyTuple(pyTuple(2L))));
     }
 
     @Test
     public void tupleOrderingWithNaN() {
       Double nan = Double.NaN;
       // First items equal via identity shortcut → length decides.
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(nan), new PyTuple2(nan, 1L)));
-      assertFalse(ComparisonIntrinsics.$lt$(new PyTuple2(nan, 1L), new PyTuple1(nan)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(nan), pyTuple(nan, 1L)));
+      assertFalse(ComparisonIntrinsics.$lt$(pyTuple(nan, 1L), pyTuple(nan)));
       // Tuples with the same length and NaN are equal (identity shortcut).
-      assertTrue(ComparisonIntrinsics.$le$(new PyTuple1(nan), new PyTuple1(nan)));
-      assertTrue(ComparisonIntrinsics.$ge$(new PyTuple1(nan), new PyTuple1(nan)));
+      assertTrue(ComparisonIntrinsics.$le$(pyTuple(nan), pyTuple(nan)));
+      assertTrue(ComparisonIntrinsics.$ge$(pyTuple(nan), pyTuple(nan)));
     }
 
     @Test
     public void tupleOrderingMixedNumericTypes() {
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(false), new PyTuple1(true)));
-      assertTrue(ComparisonIntrinsics.$lt$(new PyTuple1(true), new PyTuple1(2L)));
-      assertTrue(ComparisonIntrinsics.$gt$(new PyTuple1(2L), new PyTuple1(true)));
-      assertTrue(ComparisonIntrinsics.$le$(new PyTuple1(0L), new PyTuple1(false)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(false), pyTuple(true)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyTuple(true), pyTuple(2L)));
+      assertTrue(ComparisonIntrinsics.$gt$(pyTuple(2L), pyTuple(true)));
+      assertTrue(ComparisonIntrinsics.$le$(pyTuple(0L), pyTuple(false)));
     }
 
     @Test
     public void tupleOrderingNestedDifferentLengths() {
       assertTrue(ComparisonIntrinsics.$lt$(
-          new PyTuple1(new PyTuple1(1L)),
-          new PyTuple1(new PyTuple2(1L, 0L))));
+          pyTuple(pyTuple(1L)),
+          pyTuple(pyTuple(1L, 0L))));
       assertTrue(ComparisonIntrinsics.$gt$(
-          new PyTuple1(new PyTuple2(1L, 0L)),
-          new PyTuple1(new PyTuple1(1L))));
+          pyTuple(pyTuple(1L, 0L)),
+          pyTuple(pyTuple(1L))));
     }
 
     @Test
@@ -606,33 +618,181 @@ public final class ComparisonIntrinsicsTest {
       Double nan = Double.NaN;
       // NaN is unordered w.r.t. anything, so all four operators report false
       // as soon as the comparison reaches the NaN item.
-      assertFalse(ComparisonIntrinsics.$lt$(new PyTuple2(1L, nan), new PyTuple2(1L, 2L)));
-      assertFalse(ComparisonIntrinsics.$gt$(new PyTuple2(1L, nan), new PyTuple2(1L, 2L)));
-      assertFalse(ComparisonIntrinsics.$lt$(new PyTuple2(1L, 2L), new PyTuple2(1L, nan)));
-      assertFalse(ComparisonIntrinsics.$gt$(new PyTuple2(1L, 2L), new PyTuple2(1L, nan)));
+      assertFalse(ComparisonIntrinsics.$lt$(pyTuple(1L, nan), pyTuple(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$gt$(pyTuple(1L, nan), pyTuple(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$lt$(pyTuple(1L, 2L), pyTuple(1L, nan)));
+      assertFalse(ComparisonIntrinsics.$gt$(pyTuple(1L, 2L), pyTuple(1L, nan)));
     }
 
     @Test
     public void tupleOrderingUsesExactNumericComparison() {
       // 2**53 + 1 vs 2**53 (as a double): exact comparison says >.
       assertTrue(ComparisonIntrinsics.$gt$(
-          new PyTuple1(9007199254740993L), new PyTuple1(9007199254740992.0)));
+          pyTuple(9007199254740993L), pyTuple(9007199254740992.0)));
       assertTrue(ComparisonIntrinsics.$lt$(
-          new PyTuple1(9007199254740992.0), new PyTuple1(9007199254740993L)));
+          pyTuple(9007199254740992.0), pyTuple(9007199254740993L)));
     }
 
     @Test
     public void tupleOrderingLongVsDoubleAtBoundary() {
       // Long.MAX_VALUE (2**63 - 1) < 2**63, even though (double)Long.MAX_VALUE == 2**63.
       assertTrue(ComparisonIntrinsics.$lt$(
-          new PyTuple1(Long.MAX_VALUE), new PyTuple1(0x1p63)));
+          pyTuple(Long.MAX_VALUE), pyTuple(0x1p63)));
       assertTrue(ComparisonIntrinsics.$gt$(
-          new PyTuple1(0x1p63), new PyTuple1(Long.MAX_VALUE)));
+          pyTuple(0x1p63), pyTuple(Long.MAX_VALUE)));
       // Long.MIN_VALUE == -2**63 exactly.
       assertTrue(ComparisonIntrinsics.$le$(
-          new PyTuple1(Long.MIN_VALUE), new PyTuple1(-0x1p63)));
+          pyTuple(Long.MIN_VALUE), pyTuple(-0x1p63)));
       assertTrue(ComparisonIntrinsics.$ge$(
-          new PyTuple1(Long.MIN_VALUE), new PyTuple1(-0x1p63)));
+          pyTuple(Long.MIN_VALUE), pyTuple(-0x1p63)));
+    }
+  }
+
+
+  @Nested
+  public final class ListEquality {
+
+    @Test
+    public void listEquality() {
+      assertTrue(ComparisonIntrinsics.$eq$(pyList(1L), pyList(1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyList(1L, 2L), pyList(1L, 2L)));
+
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L), pyList(2L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L, 2L), pyList(1L, 3L)));
+
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L), pyList(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L, 2L), pyList(1L)));
+    }
+
+    @Test
+    public void listEqualityUsesIdentityShortcutBeforeEq() {
+      Double nan = Double.NaN;
+
+      assertFalse(ComparisonIntrinsics.$eq$(nan, nan));
+
+      assertTrue(ComparisonIntrinsics.$eq$(pyList(nan), pyList(nan)));
+
+      assertFalse(ComparisonIntrinsics.$eq$(
+          pyList(Double.NaN), pyList(Double.NaN)));
+    }
+
+    @Test
+    public void listMixedNumericTypes() {
+      assertTrue(ComparisonIntrinsics.$eq$(pyList(true), pyList(1L)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyList(1L), pyList(1.0)));
+      assertTrue(ComparisonIntrinsics.$eq$(pyList(false), pyList(0L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(true), pyList(0L)));
+    }
+
+    @Test
+    public void nestedListsEquality() {
+      assertTrue(ComparisonIntrinsics.$eq$(
+          pyList(pyList(1L), pyList(2L)),
+          pyList(pyList(1L), pyList(2L))));
+
+      assertFalse(ComparisonIntrinsics.$eq$(
+          pyList(pyList(1L)),
+          pyList(pyList(2L))));
+    }
+
+    @Test
+    public void listEqualityAcrossIncompatibleTypes() {
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L), pyTuple(1L)));
+      assertFalse(ComparisonIntrinsics.$eq$(pyTuple(1L), pyList(1L)));
+
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L), 1L));
+      assertFalse(ComparisonIntrinsics.$eq$(pyList(1L), "1"));
+    }
+
+    @Test
+    public void neIsNotEqForLists() {
+      assertFalse(ComparisonIntrinsics.$ne$(pyList(1L), pyList(1L)));
+      assertTrue(ComparisonIntrinsics.$ne$(pyList(1L), pyList(2L)));
+    }
+  }
+
+
+  @Nested
+  public final class ListOrdering {
+
+    @Test
+    public void listOrdering() {
+      assertTrue(ComparisonIntrinsics.$lt$(pyList(1L, 2L), pyList(1L, 3L)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyList(1L, 2L), pyList(2L, 0L)));
+      assertTrue(ComparisonIntrinsics.$gt$(pyList(2L, 0L), pyList(1L, 2L)));
+
+      assertTrue(ComparisonIntrinsics.$le$(pyList(1L, 2L), pyList(1L, 2L)));
+      assertTrue(ComparisonIntrinsics.$ge$(pyList(1L, 2L), pyList(1L, 2L)));
+
+      assertFalse(ComparisonIntrinsics.$lt$(pyList(1L, 2L), pyList(1L, 2L)));
+      assertFalse(ComparisonIntrinsics.$gt$(pyList(1L, 2L), pyList(1L, 2L)));
+    }
+
+    @Test
+    public void listOrderingWithCommonPrefix() {
+      assertTrue(ComparisonIntrinsics.$lt$(pyList(1L), pyList(1L, 2L)));
+      assertTrue(ComparisonIntrinsics.$le$(pyList(1L), pyList(1L, 2L)));
+
+      assertTrue(ComparisonIntrinsics.$gt$(pyList(1L, 2L), pyList(1L)));
+      assertTrue(ComparisonIntrinsics.$ge$(pyList(1L, 2L), pyList(1L)));
+    }
+
+    @Test
+    public void listOrderingNestedLists() {
+      assertTrue(ComparisonIntrinsics.$lt$(
+          pyList(pyList(1L)),
+          pyList(pyList(2L))));
+
+      assertTrue(ComparisonIntrinsics.$lt$(
+          pyList(pyList(1L)),
+          pyList(pyList(1L, 2L))));
+    }
+
+    @Test
+    public void listOrderingMixedNumericTypes() {
+      assertTrue(ComparisonIntrinsics.$lt$(pyList(false), pyList(true)));
+      assertTrue(ComparisonIntrinsics.$lt$(pyList(true), pyList(2L)));
+      assertTrue(ComparisonIntrinsics.$le$(pyList(1L), pyList(1.0)));
+    }
+
+    @Test
+    public void listOrderingWithNaN() {
+      assertFalse(ComparisonIntrinsics.$lt$(pyList(Double.NaN), pyList(1L)));
+      assertFalse(ComparisonIntrinsics.$gt$(pyList(Double.NaN), pyList(1L)));
+      assertFalse(ComparisonIntrinsics.$lt$(pyList(1L), pyList(Double.NaN)));
+      assertFalse(ComparisonIntrinsics.$gt$(pyList(1L), pyList(Double.NaN)));
+    }
+
+    @Test
+    public void listOrderingUsesIdentityShortcut() {
+      Double nan = Double.NaN;
+
+      // Same NaN reference: elements are considered equal,
+      // so the length determines the ordering.
+      assertTrue(ComparisonIntrinsics.$lt$(pyList(nan), pyList(nan, 1L)));
+      assertTrue(ComparisonIntrinsics.$gt$(pyList(nan, 1L), pyList(nan)));
+
+      // Same contents and same NaN reference.
+      assertTrue(ComparisonIntrinsics.$le$(pyList(nan), pyList(nan)));
+      assertTrue(ComparisonIntrinsics.$ge$(pyList(nan), pyList(nan)));
+
+      assertFalse(ComparisonIntrinsics.$lt$(pyList(nan), pyList(nan)));
+      assertFalse(ComparisonIntrinsics.$gt$(pyList(nan), pyList(nan)));
+    }
+
+    @Test
+    public void listOrderingWithComparableElements() {
+      assertTrue(ComparisonIntrinsics.$lt$(
+              pyList(1L, "a"),
+              pyList(1L, "b")));
+    }
+
+    @Test
+    public void listOrderingWithIncomparableElements() {
+      assertThrows(PyTypeError.class,
+          () -> ComparisonIntrinsics.$lt$(
+              pyList(1L, "a"),
+              pyList(1L, 2L)));
     }
   }
 
@@ -661,7 +821,7 @@ public final class ComparisonIntrinsicsTest {
     @Test
     public void orderingTuplesWithIncomparableElementsIsATypeError() {
       var e = assertThrows(PyTypeError.class,
-          () -> ComparisonIntrinsics.$lt$(new PyTuple2(1L, 1L), new PyTuple2(1L, "a")));
+          () -> ComparisonIntrinsics.$lt$(pyTuple(1L, 1L), pyTuple(1L, "a")));
       assertEquals("'<' not supported between instances of 'int' and 'str'", e.getMessage());
     }
 
