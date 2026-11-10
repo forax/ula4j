@@ -42,6 +42,9 @@ public final class PyList<E> extends AbstractList<E> {
   @SafeVarargs
   public PyList(E... items) {
     Objects.requireNonNull(items);
+    if (items.length > MAX_ARRAY_SIZE) {
+      throw tooLarge();
+    }
     for (var item : items) {
       Objects.requireNonNull(item);
     }
@@ -114,7 +117,7 @@ public final class PyList<E> extends AbstractList<E> {
 
   /// Removes and returns an element at a raw zero-based Java index.
   public E remove(int index) {
-    Objects.checkIndex(index, elements.length);
+    Objects.checkIndex(index, size);
     var removed = elements[index];
     var moved = size - index - 1;
     if (moved > 0) {
