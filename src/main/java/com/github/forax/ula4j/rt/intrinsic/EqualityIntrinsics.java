@@ -1,13 +1,17 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
 //import com.github.forax.ula4j.rt.PyDict;
-//import com.github.forax.ula4j.rt.PyList;
+import com.github.forax.ula4j.rt.PyFunction;
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /// Python-compatible `==` for the runtime's canonical value representations.
 ///
@@ -75,12 +79,13 @@ public final class EqualityIntrinsics {
           default -> { return false; }
         }
       }
-      //case PyList l -> {
-      //  switch (right) {
-      //    case PyList r -> { return listEquals(l, r); }
-      //    default -> { return false; }
-      //  }
-      //}
+      case PyList l -> {
+        switch (right) {
+          case PyList r -> { return listEquals(l, r); }
+          default -> { return false; }
+        }
+      }
+      case PyFunction function -> { return right == function; }
       //case PyDict l -> {
       //  switch (right) {
       //    case PyDict r -> { return dictEquals(l, r); }
@@ -91,6 +96,11 @@ public final class EqualityIntrinsics {
       default -> throw new PyTypeError(
           "not a canonical runtime value: " + left.getClass().getName());
     }
+  }
+
+  @Intrinsic
+  public static boolean $ne$(Object left, Object right) {
+    return !$eq$(left, right);
   }
 
   /// Used for the elements of containers, and by membership / lookup algorithms.
@@ -119,34 +129,80 @@ public final class EqualityIntrinsics {
   }
 
   /// Same length, then pairwise `sameOrEqual`. Works across every tuple shape.
-  private static boolean tupleEquals(PyTuple left, PyTuple right) {
-    var size = TupleIntrinsics.$size$(left);
-    if (size != TupleIntrinsics.$size$(right)) {
-      return false;
+  // Lists and tuples can contain themselves, directly or through mixed container cycles.
+  // Track identity pairs coinductively so recursive comparisons terminate. Pairs are unordered
+  // because equality is symmetric.
+  private static final ThreadLocal<Set<IdentityPair>> ACTIVE_PAIRS =
+      ThreadLocal.withInitial(HashSet::new);
+
+  private static boolean withPair(Object left, Object right, BooleanSupplier comparison) {
+    var active = ACTIVE_PAIRS.get();
+    var pair = new IdentityPair(left, right);
+    if (!active.add(pair)) {
+      return true;
     }
-    for (var i = 0; i < size; i++) {
-      if (!sameOrEqual(TupleIntrinsics.$get$(left, (long) i), TupleIntrinsics.$get$(right, (long) i))) {
-        return false;
+    try {
+      return comparison.getAsBoolean();
+    } finally {
+      active.remove(pair);
+      if (active.isEmpty()) {
+        ACTIVE_PAIRS.remove();
       }
     }
-    return true;
   }
 
-  // Same shape as tupleEquals, index-based like CPython. No exception for the length mismatch:
-  // for == it is a plain `false`.
-  //
-  //private static boolean listEquals(PyList left, PyList right) {
-  //  var size = left.size();
-  //  if (size != right.size()) {
-  //    return false;
-  //  }
-  //  for (var i = 0; i < size; i++) {
-  //    if (!sameOrEqual(left.get(i), right.get(i))) {
-  //      return false;
-  //    }
-  //  }
-  //  return true;
-  //}
+  private static final class IdentityPair {
+    private final Object left;
+    private final Object right;
+
+    private IdentityPair(Object left, Object right) {
+      this.left = left;
+      this.right = right;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof IdentityPair pair
+          && ((left == pair.left && right == pair.right)
+              || (left == pair.right && right == pair.left));
+    }
+
+    @Override
+    public int hashCode() {
+      return System.identityHashCode(left) ^ System.identityHashCode(right);
+    }
+  }
+
+  private static boolean tupleEquals(PyTuple left, PyTuple right) {
+    return withPair(left, right, () -> {
+      var size = TupleIntrinsics.$size$(left);
+      if (size != TupleIntrinsics.$size$(right)) {
+        return false;
+      }
+      for (var i = 0; i < size; i++) {
+        if (!sameOrEqual(TupleIntrinsics.$get$(left, (long) i),
+            TupleIntrinsics.$get$(right, (long) i))) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  private static boolean listEquals(PyList left, PyList right) {
+    return withPair(left, right, () -> {
+      var size = left.size();
+      if (size != right.size()) {
+        return false;
+      }
+      for (var i = 0; i < size; i++) {
+        if (!sameOrEqual(left.get(i), right.get(i))) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
 
   // dictEquals: same size, then for every (key, value) of left, look the key up in right using
   // PyDict's own hash/eq lookup (identity first, then Python ==). A missing key means false,
