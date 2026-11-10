@@ -4,6 +4,7 @@ import com.github.forax.ula4j.rt.intrinsic.ArithmeticIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.EqualityIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.StringIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
@@ -119,5 +120,12 @@ public final class IntrinsicShapeTest {
     assertTypeSwitchShape(ArithmeticIntrinsics.class);
     assertTrue(typeSwitchCount(ArithmeticIntrinsics.class, "$add$") >= 1);
     assertTrue(typeSwitchCount(ArithmeticIntrinsics.class, "$neg$") >= 1);
+  }
+
+  @Test
+  public void stringIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(StringIntrinsics.class);
+    assertTrue(typeSwitchCount(StringIntrinsics.class, "$str$") >= 1);
+    assertTrue(typeSwitchCount(StringIntrinsics.class, "$repr$") >= 1);
   }
 }

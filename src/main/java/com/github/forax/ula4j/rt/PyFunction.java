@@ -69,6 +69,7 @@ public final class PyFunction {
   public int arity() { return code.parameters.size(); }
   public boolean varargs() { return code.varargs; }
 
+  public boolean isBuiltin() { return code.functionDef == null; }
   Object[] capturedArgs() { return capturedArgs; }
 
   @Override

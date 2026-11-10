@@ -1,5 +1,7 @@
 package com.github.forax.ula4j.rt;
 
+import com.github.forax.ula4j.rt.intrinsic.StringIntrinsics;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -47,7 +49,7 @@ final class Builtins {
     var builder = new StringBuilder();
     var separator = "";
     for (var arg : args) {
-      builder.append(separator).append(arg);  //FIXME should call the proper Python to str
+      builder.append(separator).append(StringIntrinsics.$str$(arg));
       separator = ", ";
     }
     System.out.println(builder.toString());
