@@ -33,151 +33,6 @@ public final class ComparisonIntrinsicsTest {
   }
 
 
-  @Test
-  public void boolIntFloatAreUnified() {
-    assertTrue(ComparisonIntrinsics.$eq$(1L, true), 1L + " == " + true);
-    assertTrue(ComparisonIntrinsics.$eq$(true, 1L), true + " == " + 1L);
-    assertTrue(ComparisonIntrinsics.$eq$(0L, false), 0L + " == " + false);
-    assertTrue(ComparisonIntrinsics.$eq$(false, 0L), false + " == " + 0L);
-    assertTrue(ComparisonIntrinsics.$eq$(true, 1.0d), true + " == " + 1.0d);
-    assertTrue(ComparisonIntrinsics.$eq$(1.0d, true), 1.0d + " == " + true);
-    assertTrue(ComparisonIntrinsics.$eq$(1L, 1.0d), 1L + " == " + 1.0d);
-    assertTrue(ComparisonIntrinsics.$eq$(1.0d, 1L), 1.0d + " == " + 1L);
-    assertTrue(ComparisonIntrinsics.$eq$(true, true), true + " == " + true);
-    assertTrue(ComparisonIntrinsics.$eq$(true, true), true + " == " + true);
-    assertFalse(ComparisonIntrinsics.$eq$(true, false), true + " == " + false);
-    assertFalse(ComparisonIntrinsics.$eq$(false, true), false + " == " + true);
-    assertFalse(ComparisonIntrinsics.$eq$(2L, true), 2L + " == " + true);
-    assertFalse(ComparisonIntrinsics.$eq$(true, 2L), true + " == " + 2L);
-    assertFalse(ComparisonIntrinsics.$eq$(1L, 1.5d), 1L + " == " + 1.5d);
-    assertFalse(ComparisonIntrinsics.$eq$(1.5d, 1L), 1.5d + " == " + 1L);
-  }
-
-  @Test
-  public void intFloatComparisonIsExact() {
-    // 2**53 + 1
-    assertFalse(ComparisonIntrinsics.$eq$(9007199254740993L, 9007199254740992.0d), 9007199254740993L + " == " + 9007199254740992.0d);
-    assertFalse(ComparisonIntrinsics.$eq$(9007199254740992.0d, 9007199254740993L), 9007199254740992.0d + " == " + 9007199254740993L);
-    assertTrue(ComparisonIntrinsics.$eq$(9007199254740992L, 9007199254740992.0d), 9007199254740992L + " == " + 9007199254740992.0d);
-    assertTrue(ComparisonIntrinsics.$eq$(9007199254740992.0d, 9007199254740992L), 9007199254740992.0d + " == " + 9007199254740992L);
-    // (double) Long.MAX_VALUE == 2**63
-    assertFalse(ComparisonIntrinsics.$eq$(Long.MAX_VALUE, 0x1p63), Long.MAX_VALUE + " == " + 0x1p63);
-    assertFalse(ComparisonIntrinsics.$eq$(0x1p63, Long.MAX_VALUE), 0x1p63 + " == " + Long.MAX_VALUE);
-    assertTrue(ComparisonIntrinsics.$eq$(Long.MIN_VALUE, -0x1p63), Long.MIN_VALUE + " == " + -0x1p63);
-    assertTrue(ComparisonIntrinsics.$eq$(-0x1p63, Long.MIN_VALUE), -0x1p63 + " == " + Long.MIN_VALUE);
-    Object a2 = BigInteger.ONE.shiftLeft(63);
-    assertTrue(ComparisonIntrinsics.$eq$(a2, 0x1p63), a2 + " == " + 0x1p63);
-    assertTrue(ComparisonIntrinsics.$eq$(0x1p63, a2), 0x1p63 + " == " + a2);
-    Object a1 = BigInteger.ONE.shiftLeft(100);
-    assertTrue(ComparisonIntrinsics.$eq$(a1, 0x1p100), a1 + " == " + 0x1p100);
-    assertTrue(ComparisonIntrinsics.$eq$(0x1p100, a1), 0x1p100 + " == " + a1);
-    Object a3 = BigInteger.ONE.shiftLeft(100).add(BigInteger.ONE);
-    assertFalse(ComparisonIntrinsics.$eq$(a3, 0x1p100), a3 + " == " + 0x1p100);
-    assertFalse(ComparisonIntrinsics.$eq$(0x1p100, a3), 0x1p100 + " == " + a3);
-    Object a = BigInteger.TEN.pow(30);
-    Object b = BigInteger.TEN.pow(30);
-    assertTrue(ComparisonIntrinsics.$eq$(a, b), a + " == " + b);
-    assertTrue(ComparisonIntrinsics.$eq$(b, a), b + " == " + a);
-  }
-
-  @Test
-  public void nanInfinityAndSignedZero() {
-    Object nan = Double.NaN;
-    assertFalse(ComparisonIntrinsics.$eq$(nan, nan));              // even for the same box
-    assertFalse(ComparisonIntrinsics.$eq$(nan, 0L), nan + " == " + 0L);
-    assertFalse(ComparisonIntrinsics.$eq$(0L, nan), 0L + " == " + nan);
-    assertFalse(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, Long.MAX_VALUE), Double.POSITIVE_INFINITY + " == " + Long.MAX_VALUE);
-    assertFalse(ComparisonIntrinsics.$eq$(Long.MAX_VALUE, Double.POSITIVE_INFINITY), Long.MAX_VALUE + " == " + Double.POSITIVE_INFINITY);
-    Object b = BigInteger.TEN.pow(400);
-    assertFalse(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, b), Double.POSITIVE_INFINITY + " == " + b);
-    assertFalse(ComparisonIntrinsics.$eq$(b, Double.POSITIVE_INFINITY), b + " == " + Double.POSITIVE_INFINITY);
-    assertTrue(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY), Double.POSITIVE_INFINITY + " == " + Double.POSITIVE_INFINITY);
-    assertTrue(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY), Double.POSITIVE_INFINITY + " == " + Double.POSITIVE_INFINITY);
-    assertTrue(ComparisonIntrinsics.$eq$(-0.0d, 0.0d), -0.0d + " == " + 0.0d);
-    assertTrue(ComparisonIntrinsics.$eq$(0.0d, -0.0d), 0.0d + " == " + -0.0d);
-    assertTrue(ComparisonIntrinsics.$eq$(-0.0d, 0L), -0.0d + " == " + 0L);
-    assertTrue(ComparisonIntrinsics.$eq$(0L, -0.0d), 0L + " == " + -0.0d);
-    assertTrue(ComparisonIntrinsics.$eq$(-0.0d, false), -0.0d + " == " + false);
-    assertTrue(ComparisonIntrinsics.$eq$(false, -0.0d), false + " == " + -0.0d);
-  }
-
-  @Test
-  public void stringsAndNone() {
-    assertTrue(ComparisonIntrinsics.$eq$("abc", "abc"), "abc" + " == " + "abc");
-    assertTrue(ComparisonIntrinsics.$eq$("abc", "abc"), "abc" + " == " + "abc");
-    assertFalse(ComparisonIntrinsics.$eq$("abc", "abd"), "abc" + " == " + "abd");
-    assertFalse(ComparisonIntrinsics.$eq$("abd", "abc"), "abd" + " == " + "abc");
-    assertFalse(ComparisonIntrinsics.$eq$("1", 1L), "1" + " == " + 1L);
-    assertFalse(ComparisonIntrinsics.$eq$(1L, "1"), 1L + " == " + "1");
-    assertTrue(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, PyNone.INSTANCE), PyNone.INSTANCE + " == " + PyNone.INSTANCE);
-    assertTrue(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, PyNone.INSTANCE), PyNone.INSTANCE + " == " + PyNone.INSTANCE);
-    assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, 0L), PyNone.INSTANCE + " == " + 0L);
-    assertFalse(ComparisonIntrinsics.$eq$(0L, PyNone.INSTANCE), 0L + " == " + PyNone.INSTANCE);
-    assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, "None"), PyNone.INSTANCE + " == " + "None");
-    assertFalse(ComparisonIntrinsics.$eq$("None", PyNone.INSTANCE), "None" + " == " + PyNone.INSTANCE);
-    assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, false), PyNone.INSTANCE + " == " + false);
-    assertFalse(ComparisonIntrinsics.$eq$(false, PyNone.INSTANCE), false + " == " + PyNone.INSTANCE);
-  }
-
-  @Test
-  public void tuplesCompareAcrossShapesAndRecursively() {
-    Object a2 = new PyTuple2(1L, "a");
-    Object b2 = new PyTuple.PyTupleN(new Object[]{1.0d, "a"});
-    assertTrue(ComparisonIntrinsics.$eq$(a2, b2), a2 + " == " + b2);
-    assertTrue(ComparisonIntrinsics.$eq$(b2, a2), b2 + " == " + a2);
-    Object a1 = new PyTuple1(new PyTuple1(true));
-    Object b1 = new PyTuple1(new PyTuple.PyTupleN(new Object[]{1L}));
-    assertTrue(ComparisonIntrinsics.$eq$(a1, b1), a1 + " == " + b1);
-    assertTrue(ComparisonIntrinsics.$eq$(b1, a1), b1 + " == " + a1);
-    Object a5 = new PyTuple2(1L, "a");
-    Object b4 = new PyTuple2(1L, "b");
-    assertFalse(ComparisonIntrinsics.$eq$(a5, b4), a5 + " == " + b4);
-    assertFalse(ComparisonIntrinsics.$eq$(b4, a5), b4 + " == " + a5);
-    Object a4 = new PyTuple1(1L);
-    Object b3 = new PyTuple2(1L, 1L);
-    assertFalse(ComparisonIntrinsics.$eq$(a4, b3), a4 + " == " + b3);
-    assertFalse(ComparisonIntrinsics.$eq$(b3, a4), b3 + " == " + a4);
-    Object a3 = new PyTuple1(1L);
-    assertFalse(ComparisonIntrinsics.$eq$(a3, 1L), a3 + " == " + 1L);
-    assertFalse(ComparisonIntrinsics.$eq$(1L, a3), 1L + " == " + a3);
-    Object a = new PyTuple.PyTupleN(new Object[0]);
-    Object b = new PyTuple.PyTupleN(new Object[0]);
-    assertTrue(ComparisonIntrinsics.$eq$(a, b), a + " == " + b);
-    assertTrue(ComparisonIntrinsics.$eq$(b, a), b + " == " + a);
-  }
-
-  @Test
-  public void containerElementsUseTheIdentityShortcut() {
-    // CPython: x = float('nan'); (x,) == (x,) is True, (float('nan'),) == (float('nan'),) is False
-    Object x = Double.valueOf(Double.NaN);
-    Object a = new PyTuple1(x);
-    Object b = new PyTuple1(x);
-    assertTrue(ComparisonIntrinsics.$eq$(a, b), a + " == " + b);
-    assertTrue(ComparisonIntrinsics.$eq$(b, a), b + " == " + a);
-    Object a1 = new PyTuple1(Double.valueOf(Double.NaN));
-    Object b1 = new PyTuple1(Double.valueOf(Double.NaN));
-    assertFalse(ComparisonIntrinsics.$eq$(a1, b1), a1 + " == " + b1);
-    assertFalse(ComparisonIntrinsics.$eq$(b1, a1), b1 + " == " + a1);
-  }
-
-  @Test
-  public void specializedEqMatchesTheGenericOne() throws Throwable {
-    var eq = RT.bsmSpecialize(MethodHandles.lookup(), "$eq$",
-        MethodType.methodType(boolean.class, Object.class, Object.class), ComparisonIntrinsics.class).getTarget();
-    List<Object> values = List.of(
-        0L, 1L, -1L, Long.MAX_VALUE, Long.MIN_VALUE, BigInteger.ONE.shiftLeft(63), BigInteger.TEN.pow(30),
-        true, false, 0.0d, -0.0d, 1.0d, 1.5d, 0x1p63, Double.NaN, Double.POSITIVE_INFINITY,
-        "", "a", PyNone.INSTANCE,
-        new PyTuple1(1L), new PyTuple2(1L, "a"), new PyTuple.PyTupleN(new Object[]{1L, "a"}));
-    for (var round = 0; round < 3; round++) {
-      for (var a : values) {
-        for (var b : values) {
-          assertEquals(ComparisonIntrinsics.$eq$(a, b), (boolean) eq.invokeExact(a, b), a + " == " + b);
-        }
-      }
-    }
-  }
-
   @Nested
   public final class EqualityPrimitive {
 
@@ -334,6 +189,24 @@ public final class ComparisonIntrinsicsTest {
       assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, new Object()));
       assertFalse(ComparisonIntrinsics.$eq$(1L, new Object()));
     }
+
+    @Test
+    public void stringsAndNone() {
+      assertTrue(ComparisonIntrinsics.$eq$("abc", "abc"), "abc" + " == " + "abc");
+      assertTrue(ComparisonIntrinsics.$eq$("abc", "abc"), "abc" + " == " + "abc");
+      assertFalse(ComparisonIntrinsics.$eq$("abc", "abd"), "abc" + " == " + "abd");
+      assertFalse(ComparisonIntrinsics.$eq$("abd", "abc"), "abd" + " == " + "abc");
+      assertFalse(ComparisonIntrinsics.$eq$("1", 1L), "1" + " == " + 1L);
+      assertFalse(ComparisonIntrinsics.$eq$(1L, "1"), 1L + " == " + "1");
+      assertTrue(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, PyNone.INSTANCE), PyNone.INSTANCE + " == " + PyNone.INSTANCE);
+      assertTrue(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, PyNone.INSTANCE), PyNone.INSTANCE + " == " + PyNone.INSTANCE);
+      assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, 0L), PyNone.INSTANCE + " == " + 0L);
+      assertFalse(ComparisonIntrinsics.$eq$(0L, PyNone.INSTANCE), 0L + " == " + PyNone.INSTANCE);
+      assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, "None"), PyNone.INSTANCE + " == " + "None");
+      assertFalse(ComparisonIntrinsics.$eq$("None", PyNone.INSTANCE), "None" + " == " + PyNone.INSTANCE);
+      assertFalse(ComparisonIntrinsics.$eq$(PyNone.INSTANCE, false), PyNone.INSTANCE + " == " + false);
+      assertFalse(ComparisonIntrinsics.$eq$(false, PyNone.INSTANCE), false + " == " + PyNone.INSTANCE);
+    }
   }
 
 
@@ -440,6 +313,74 @@ public final class ComparisonIntrinsicsTest {
       assertTrue(ComparisonIntrinsics.$gt$(0x1p-1074, 0L));
       assertTrue(ComparisonIntrinsics.$gt$(0L, -0x1p-1074));
       assertFalse(ComparisonIntrinsics.$eq$(0L, 0x1p-1074));
+    }
+
+    @Test
+    public void boolIntFloatAreUnified() {
+      assertTrue(ComparisonIntrinsics.$eq$(1L, true), 1L + " == " + true);
+      assertTrue(ComparisonIntrinsics.$eq$(true, 1L), true + " == " + 1L);
+      assertTrue(ComparisonIntrinsics.$eq$(0L, false), 0L + " == " + false);
+      assertTrue(ComparisonIntrinsics.$eq$(false, 0L), false + " == " + 0L);
+      assertTrue(ComparisonIntrinsics.$eq$(true, 1.0d), true + " == " + 1.0d);
+      assertTrue(ComparisonIntrinsics.$eq$(1.0d, true), 1.0d + " == " + true);
+      assertTrue(ComparisonIntrinsics.$eq$(1L, 1.0d), 1L + " == " + 1.0d);
+      assertTrue(ComparisonIntrinsics.$eq$(1.0d, 1L), 1.0d + " == " + 1L);
+      assertTrue(ComparisonIntrinsics.$eq$(true, true), true + " == " + true);
+      assertTrue(ComparisonIntrinsics.$eq$(true, true), true + " == " + true);
+      assertFalse(ComparisonIntrinsics.$eq$(true, false), true + " == " + false);
+      assertFalse(ComparisonIntrinsics.$eq$(false, true), false + " == " + true);
+      assertFalse(ComparisonIntrinsics.$eq$(2L, true), 2L + " == " + true);
+      assertFalse(ComparisonIntrinsics.$eq$(true, 2L), true + " == " + 2L);
+      assertFalse(ComparisonIntrinsics.$eq$(1L, 1.5d), 1L + " == " + 1.5d);
+      assertFalse(ComparisonIntrinsics.$eq$(1.5d, 1L), 1.5d + " == " + 1L);
+    }
+
+    @Test
+    public void intFloatComparisonIsExact() {
+      // 2**53 + 1
+      assertFalse(ComparisonIntrinsics.$eq$(9007199254740993L, 9007199254740992.0d), 9007199254740993L + " == " + 9007199254740992.0d);
+      assertFalse(ComparisonIntrinsics.$eq$(9007199254740992.0d, 9007199254740993L), 9007199254740992.0d + " == " + 9007199254740993L);
+      assertTrue(ComparisonIntrinsics.$eq$(9007199254740992L, 9007199254740992.0d), 9007199254740992L + " == " + 9007199254740992.0d);
+      assertTrue(ComparisonIntrinsics.$eq$(9007199254740992.0d, 9007199254740992L), 9007199254740992.0d + " == " + 9007199254740992L);
+      // (double) Long.MAX_VALUE == 2**63
+      assertFalse(ComparisonIntrinsics.$eq$(Long.MAX_VALUE, 0x1p63), Long.MAX_VALUE + " == " + 0x1p63);
+      assertFalse(ComparisonIntrinsics.$eq$(0x1p63, Long.MAX_VALUE), 0x1p63 + " == " + Long.MAX_VALUE);
+      assertTrue(ComparisonIntrinsics.$eq$(Long.MIN_VALUE, -0x1p63), Long.MIN_VALUE + " == " + -0x1p63);
+      assertTrue(ComparisonIntrinsics.$eq$(-0x1p63, Long.MIN_VALUE), -0x1p63 + " == " + Long.MIN_VALUE);
+      Object a2 = BigInteger.ONE.shiftLeft(63);
+      assertTrue(ComparisonIntrinsics.$eq$(a2, 0x1p63), a2 + " == " + 0x1p63);
+      assertTrue(ComparisonIntrinsics.$eq$(0x1p63, a2), 0x1p63 + " == " + a2);
+      Object a1 = BigInteger.ONE.shiftLeft(100);
+      assertTrue(ComparisonIntrinsics.$eq$(a1, 0x1p100), a1 + " == " + 0x1p100);
+      assertTrue(ComparisonIntrinsics.$eq$(0x1p100, a1), 0x1p100 + " == " + a1);
+      Object a3 = BigInteger.ONE.shiftLeft(100).add(BigInteger.ONE);
+      assertFalse(ComparisonIntrinsics.$eq$(a3, 0x1p100), a3 + " == " + 0x1p100);
+      assertFalse(ComparisonIntrinsics.$eq$(0x1p100, a3), 0x1p100 + " == " + a3);
+      Object a = BigInteger.TEN.pow(30);
+      Object b = BigInteger.TEN.pow(30);
+      assertTrue(ComparisonIntrinsics.$eq$(a, b), a + " == " + b);
+      assertTrue(ComparisonIntrinsics.$eq$(b, a), b + " == " + a);
+    }
+
+    @Test
+    public void nanInfinityAndSignedZero() {
+      Object nan = Double.NaN;
+      assertFalse(ComparisonIntrinsics.$eq$(nan, nan));              // even for the same box
+      assertFalse(ComparisonIntrinsics.$eq$(nan, 0L), nan + " == " + 0L);
+      assertFalse(ComparisonIntrinsics.$eq$(0L, nan), 0L + " == " + nan);
+      assertFalse(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, Long.MAX_VALUE), Double.POSITIVE_INFINITY + " == " + Long.MAX_VALUE);
+      assertFalse(ComparisonIntrinsics.$eq$(Long.MAX_VALUE, Double.POSITIVE_INFINITY), Long.MAX_VALUE + " == " + Double.POSITIVE_INFINITY);
+      Object b = BigInteger.TEN.pow(400);
+      assertFalse(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, b), Double.POSITIVE_INFINITY + " == " + b);
+      assertFalse(ComparisonIntrinsics.$eq$(b, Double.POSITIVE_INFINITY), b + " == " + Double.POSITIVE_INFINITY);
+      assertTrue(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY), Double.POSITIVE_INFINITY + " == " + Double.POSITIVE_INFINITY);
+      assertTrue(ComparisonIntrinsics.$eq$(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY), Double.POSITIVE_INFINITY + " == " + Double.POSITIVE_INFINITY);
+      assertTrue(ComparisonIntrinsics.$eq$(-0.0d, 0.0d), -0.0d + " == " + 0.0d);
+      assertTrue(ComparisonIntrinsics.$eq$(0.0d, -0.0d), 0.0d + " == " + -0.0d);
+      assertTrue(ComparisonIntrinsics.$eq$(-0.0d, 0L), -0.0d + " == " + 0L);
+      assertTrue(ComparisonIntrinsics.$eq$(0L, -0.0d), 0L + " == " + -0.0d);
+      assertTrue(ComparisonIntrinsics.$eq$(-0.0d, false), -0.0d + " == " + false);
+      assertTrue(ComparisonIntrinsics.$eq$(false, -0.0d), false + " == " + -0.0d);
     }
   }
 
@@ -705,6 +646,47 @@ public final class ComparisonIntrinsicsTest {
       assertFalse(ComparisonIntrinsics.$eq$(
           pyTuple(pyTuple(PyNone.INSTANCE)),
           pyTuple(pyTuple(0L))));
+    }
+
+    @Test
+    public void tuplesCompareAcrossShapesAndRecursively() {
+      Object a2 = new PyTuple2(1L, "a");
+      Object b2 = new PyTuple.PyTupleN(new Object[]{1.0d, "a"});
+      assertTrue(ComparisonIntrinsics.$eq$(a2, b2), a2 + " == " + b2);
+      assertTrue(ComparisonIntrinsics.$eq$(b2, a2), b2 + " == " + a2);
+      Object a1 = new PyTuple1(new PyTuple1(true));
+      Object b1 = new PyTuple1(new PyTuple.PyTupleN(new Object[]{1L}));
+      assertTrue(ComparisonIntrinsics.$eq$(a1, b1), a1 + " == " + b1);
+      assertTrue(ComparisonIntrinsics.$eq$(b1, a1), b1 + " == " + a1);
+      Object a5 = new PyTuple2(1L, "a");
+      Object b4 = new PyTuple2(1L, "b");
+      assertFalse(ComparisonIntrinsics.$eq$(a5, b4), a5 + " == " + b4);
+      assertFalse(ComparisonIntrinsics.$eq$(b4, a5), b4 + " == " + a5);
+      Object a4 = new PyTuple1(1L);
+      Object b3 = new PyTuple2(1L, 1L);
+      assertFalse(ComparisonIntrinsics.$eq$(a4, b3), a4 + " == " + b3);
+      assertFalse(ComparisonIntrinsics.$eq$(b3, a4), b3 + " == " + a4);
+      Object a3 = new PyTuple1(1L);
+      assertFalse(ComparisonIntrinsics.$eq$(a3, 1L), a3 + " == " + 1L);
+      assertFalse(ComparisonIntrinsics.$eq$(1L, a3), 1L + " == " + a3);
+      Object a = new PyTuple.PyTupleN(new Object[0]);
+      Object b = new PyTuple.PyTupleN(new Object[0]);
+      assertTrue(ComparisonIntrinsics.$eq$(a, b), a + " == " + b);
+      assertTrue(ComparisonIntrinsics.$eq$(b, a), b + " == " + a);
+    }
+
+    @Test
+    public void containerElementsUseTheIdentityShortcut() {
+      // CPython: x = float('nan'); (x,) == (x,) is True, (float('nan'),) == (float('nan'),) is False
+      Object x = Double.valueOf(Double.NaN);
+      Object a = new PyTuple1(x);
+      Object b = new PyTuple1(x);
+      assertTrue(ComparisonIntrinsics.$eq$(a, b), a + " == " + b);
+      assertTrue(ComparisonIntrinsics.$eq$(b, a), b + " == " + a);
+      Object a1 = new PyTuple1(Double.valueOf(Double.NaN));
+      Object b1 = new PyTuple1(Double.valueOf(Double.NaN));
+      assertFalse(ComparisonIntrinsics.$eq$(a1, b1), a1 + " == " + b1);
+      assertFalse(ComparisonIntrinsics.$eq$(b1, a1), b1 + " == " + a1);
     }
   }
 
@@ -1011,6 +993,27 @@ public final class ComparisonIntrinsicsTest {
           () -> ComparisonIntrinsics.$lt$(1L, PyNone.INSTANCE));
       assertEquals("'<' not supported between instances of 'int' and 'NoneType'",
           e.getMessage());
+    }
+  }
+
+  @Nested
+  public final class Specialisation {
+    @Test
+    public void specializedEqMatchesTheGenericOne() throws Throwable {
+      var eq = RT.bsmSpecialize(MethodHandles.lookup(), "$eq$",
+          MethodType.methodType(boolean.class, Object.class, Object.class), ComparisonIntrinsics.class).getTarget();
+      List<Object> values = List.of(
+          0L, 1L, -1L, Long.MAX_VALUE, Long.MIN_VALUE, BigInteger.ONE.shiftLeft(63), BigInteger.TEN.pow(30),
+          true, false, 0.0d, -0.0d, 1.0d, 1.5d, 0x1p63, Double.NaN, Double.POSITIVE_INFINITY,
+          "", "a", PyNone.INSTANCE,
+          new PyTuple1(1L), new PyTuple2(1L, "a"), new PyTuple.PyTupleN(new Object[]{1L, "a"}));
+      for (var round = 0; round < 3; round++) {
+        for (var a : values) {
+          for (var b : values) {
+            assertEquals(ComparisonIntrinsics.$eq$(a, b), (boolean) eq.invokeExact(a, b), a + " == " + b);
+          }
+        }
+      }
     }
   }
 }
