@@ -83,6 +83,80 @@ public final class ArithmeticIntrinsicsTest {
           "can only concatenate tuple (not \"str\") to tuple",
           assertThrows(PyTypeError.class, () -> ArithmeticIntrinsics.$add$(new PyTuple1(1L), "x")).getMessage());
     }
+
+    @Test
+    public void addBooleans() {
+      // bool is an int in Python: True + True == 2 (int, not bool).
+      assertEquals(2L, ArithmeticIntrinsics.$add$(true, true));
+      assertEquals(1L, ArithmeticIntrinsics.$add$(true, false));
+      assertEquals(0L, ArithmeticIntrinsics.$add$(false, false));
+      assertEquals(1L, ArithmeticIntrinsics.$add$(false, true));
+      assertEquals(2L, ArithmeticIntrinsics.$add$(true, 1L));
+      assertEquals(1L, ArithmeticIntrinsics.$add$(false, 1L));
+      assertEquals(2L, ArithmeticIntrinsics.$add$(1L, true));
+      assertEquals(1L, ArithmeticIntrinsics.$add$(1L, false));
+      assertEquals(2.0, ArithmeticIntrinsics.$add$(true, 1.0));
+      assertEquals(1.0, ArithmeticIntrinsics.$add$(false, 1.0));
+      assertEquals(2.0, ArithmeticIntrinsics.$add$(1.0, true));
+      assertEquals(1.0, ArithmeticIntrinsics.$add$(1.0, false));
+    }
+
+    @Test
+    public void addMixedBigInteger() {
+      assertEquals(3L, ArithmeticIntrinsics.$add$(1L, BigInteger.TWO));
+      assertEquals(3L, ArithmeticIntrinsics.$add$(BigInteger.TWO, 1L));
+      assertEquals(0L, ArithmeticIntrinsics.$add$(BigInteger.ZERO, BigInteger.ZERO));
+      // Overflow via mixed types.
+      assertEquals(BigInteger.ONE.shiftLeft(63),
+          ArithmeticIntrinsics.$add$(Long.MAX_VALUE, BigInteger.ONE));
+      assertEquals(BigInteger.ONE.shiftLeft(63),
+          ArithmeticIntrinsics.$add$(BigInteger.ONE, Long.MAX_VALUE));
+      // BigInteger + Double → Double.
+      assertEquals(3.0, ArithmeticIntrinsics.$add$(BigInteger.ONE, 2.0));
+      assertEquals(3.0, ArithmeticIntrinsics.$add$(1.0, BigInteger.TWO));
+      // Large BigInteger + small Long stays BigInteger.
+      var big = BigInteger.TEN.pow(30);
+      assertEquals(big.add(BigInteger.TWO), ArithmeticIntrinsics.$add$(big, 2L));
+      assertEquals(big.add(BigInteger.TWO), ArithmeticIntrinsics.$add$(2L, big));
+    }
+
+    @Test
+    public void addLongEdges() {
+      assertEquals(Long.MAX_VALUE, ArithmeticIntrinsics.$add$(Long.MAX_VALUE, 0L));
+      assertEquals(Long.MIN_VALUE, ArithmeticIntrinsics.$add$(Long.MIN_VALUE, 0L));
+    }
+
+    @Test
+    public void addDoubleSpecialValues() {
+      assertEquals(Double.POSITIVE_INFINITY,
+          ArithmeticIntrinsics.$add$(Double.POSITIVE_INFINITY, 0.0));
+      assertEquals(Double.POSITIVE_INFINITY,
+          ArithmeticIntrinsics.$add$(Double.POSITIVE_INFINITY, 1L));
+      assertEquals(Double.NEGATIVE_INFINITY,
+          ArithmeticIntrinsics.$add$(Double.NEGATIVE_INFINITY, 1L));
+      assertTrue(Double.isNaN((double) ArithmeticIntrinsics.$add$(Double.NaN, 1.0)));
+      assertTrue(Double.isNaN((double) ArithmeticIntrinsics.$add$(1L, Double.NaN)));
+    }
+
+    @Test
+    public void addEmptyTuples() {
+      var empty = new PyTupleN(new Object[0]);
+      var t1 = new PyTuple1(1L);
+      assertEquals(0L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$add$(empty, empty)));
+      assertEquals(1L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$add$(empty, t1)));
+      assertEquals(1L, TupleIntrinsics.$size$((PyTuple) ArithmeticIntrinsics.$add$(t1, empty)));
+    }
+
+    @Test
+    public void addTuplePreservesElements() {
+      var a = new Object();
+      var b = new Object();
+      var left = new PyTuple1(a);
+      var right = new PyTuple1(b);
+      var result = (PyTuple) ArithmeticIntrinsics.$add$(left, right);
+      assertSame(a, TupleIntrinsics.$get$(result, 0L));
+      assertSame(b, TupleIntrinsics.$get$(result, 1L));
+    }
   }
 
   @Nested
@@ -115,6 +189,34 @@ public final class ArithmeticIntrinsicsTest {
       assertEquals(
           "unsupported operand type(s) for -: 'int' and 'str'",
           assertThrows(PyTypeError.class, () -> ArithmeticIntrinsics.$sub$(1L, "a")).getMessage());
+    }
+
+    @Test
+    public void subBooleans() {
+      assertEquals(0L, ArithmeticIntrinsics.$sub$(true, true));
+      assertEquals(1L, ArithmeticIntrinsics.$sub$(true, false));
+      assertEquals(-1L, ArithmeticIntrinsics.$sub$(false, true));
+      assertEquals(0L, ArithmeticIntrinsics.$sub$(true, 1L));
+      assertEquals(0.0, ArithmeticIntrinsics.$sub$(true, 1.0));
+      assertEquals(0.0, ArithmeticIntrinsics.$sub$(1.0, true));
+    }
+
+    @Test
+    public void subMixedBigInteger() {
+      assertEquals(-1L, ArithmeticIntrinsics.$sub$(1L, BigInteger.TWO));
+      assertEquals(1L, ArithmeticIntrinsics.$sub$(BigInteger.TWO, 1L));
+      var big = BigInteger.TEN.pow(30);
+      assertEquals(big.subtract(BigInteger.TWO), ArithmeticIntrinsics.$sub$(big, 2L));
+      assertEquals(BigInteger.TWO.subtract(big), ArithmeticIntrinsics.$sub$(2L, big));
+      // BigInteger - Double → Double.
+      assertEquals(-1.0, ArithmeticIntrinsics.$sub$(BigInteger.ONE, 2.0));
+      assertEquals(1.0, ArithmeticIntrinsics.$sub$(2.0, BigInteger.ONE));
+    }
+
+    @Test
+    public void subLongEdges() {
+      assertEquals(Long.MAX_VALUE, ArithmeticIntrinsics.$sub$(Long.MAX_VALUE, 0L));
+      assertEquals(Long.MIN_VALUE, ArithmeticIntrinsics.$sub$(Long.MIN_VALUE, 0L));
     }
   }
 
@@ -205,6 +307,51 @@ public final class ArithmeticIntrinsicsTest {
           () -> ArithmeticIntrinsics.$mul$("ab", (long) Integer.MAX_VALUE));
       assertThrows(UnimplementedFeatureError.class,
           () -> ArithmeticIntrinsics.$mul$(new PyTuple2(1L, 2L), (long) Integer.MAX_VALUE));
+    }
+
+    @Test
+    public void mulBooleans() {
+      assertEquals(1L, ArithmeticIntrinsics.$mul$(true, true));
+      assertEquals(0L, ArithmeticIntrinsics.$mul$(true, false));
+      assertEquals(3L, ArithmeticIntrinsics.$mul$(true, 3L));
+      assertEquals(0L, ArithmeticIntrinsics.$mul$(false, 1_000_000_000L));
+      assertEquals(3.0, ArithmeticIntrinsics.$mul$(true, 3.0));
+      assertEquals(-1.0, ArithmeticIntrinsics.$mul$(true, -1.0));
+    }
+
+    @Test
+    public void mulMixedBigInteger() {
+      assertEquals(6L, ArithmeticIntrinsics.$mul$(2L, BigInteger.valueOf(3)));
+      assertEquals(6L, ArithmeticIntrinsics.$mul$(BigInteger.valueOf(3), 2L));
+      var big = BigInteger.TEN.pow(20);
+      assertEquals(big.multiply(BigInteger.TWO), ArithmeticIntrinsics.$mul$(big, 2L));
+      assertEquals(big.multiply(BigInteger.TWO), ArithmeticIntrinsics.$mul$(2L, big));
+      assertEquals(0L, ArithmeticIntrinsics.$mul$(BigInteger.ZERO, BigInteger.TEN.pow(30)));
+      // BigInteger * Double → Double.
+      assertEquals(4.0, ArithmeticIntrinsics.$mul$(BigInteger.TWO, 2.0));
+      assertEquals(4.0, ArithmeticIntrinsics.$mul$(2.0, BigInteger.TWO));
+    }
+
+    @Test
+    public void mulDoubleSpecialValues() {
+      assertEquals(Double.POSITIVE_INFINITY,
+          ArithmeticIntrinsics.$mul$(Double.POSITIVE_INFINITY, 2.0));
+      assertEquals(Double.NEGATIVE_INFINITY,
+          ArithmeticIntrinsics.$mul$(Double.POSITIVE_INFINITY, -2.0));
+      assertEquals(-0.0, ArithmeticIntrinsics.$mul$(0.0, -1.0));
+      assertEquals(0.0, ArithmeticIntrinsics.$mul$(-0.0, -1.0));
+      assertTrue(Double.isNaN((double) ArithmeticIntrinsics.$mul$(Double.NaN, 1.0)));
+      assertTrue(Double.isNaN((double) ArithmeticIntrinsics.$mul$(Double.NEGATIVE_INFINITY, 0.0)));
+    }
+
+    @Test
+    public void tupleRepeatPreservesIdentity() {
+      var obj = new Object();
+      var tuple = new PyTuple1(obj);
+      var result = (PyTuple) ArithmeticIntrinsics.$mul$(tuple, 3L);
+      for (int i = 0; i < 3; i++) {
+        assertSame(obj, TupleIntrinsics.$get$(result, (long) i));
+      }
     }
   }
 
@@ -305,6 +452,44 @@ public final class ArithmeticIntrinsicsTest {
       assertThrows(PyZeroDivisionError.class,
           () -> ArithmeticIntrinsics.$div$(1.0, -0.0));
     }
+
+
+    @Test
+    public void divBooleans() {
+      assertEquals(1.0, ArithmeticIntrinsics.$div$(true, true));
+      assertEquals(0.5, ArithmeticIntrinsics.$div$(true, 2L));
+      assertEquals(2.0, ArithmeticIntrinsics.$div$(2L, true));
+      // Zero denominators yield the *int* error message even from a bool.
+      assertEquals("division by zero",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$div$(true, false)).getMessage());
+      assertEquals("float division by zero",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$div$(true, 0.0)).getMessage());
+    }
+
+    @Test
+    public void divMixedBigInteger() {
+      assertEquals(0.5, ArithmeticIntrinsics.$div$(1L, BigInteger.TWO));
+      assertEquals(2.0, ArithmeticIntrinsics.$div$(BigInteger.valueOf(4), 2L));
+      assertEquals(1.0, ArithmeticIntrinsics.$div$(BigInteger.TWO, BigInteger.TWO));
+      assertEquals(0.5, ArithmeticIntrinsics.$div$(1.0, BigInteger.TWO));
+      assertEquals(2.0, ArithmeticIntrinsics.$div$(BigInteger.valueOf(4), 2.0));
+    }
+
+    @Test
+    public void divLongEdges() {
+      // (double) Long.MAX_VALUE rounds up to 2^63.
+      assertEquals((double) Long.MAX_VALUE,
+          ArithmeticIntrinsics.$div$(Long.MAX_VALUE, 1L));
+      assertEquals(-(double) Long.MAX_VALUE,
+          ArithmeticIntrinsics.$div$(Long.MAX_VALUE, -1L));
+      // 1 / Long.MIN_VALUE == -2^-63; both the fast path and the manual
+      // double division give the same exact result.
+      assertEquals(1.0 / (double) Long.MIN_VALUE,
+          ArithmeticIntrinsics.$div$(1L, Long.MIN_VALUE));
+    }
+
   }
 
   @Nested
@@ -342,6 +527,36 @@ public final class ArithmeticIntrinsicsTest {
       // -0.0 // 5.0 is -0.0, not 0.0.
       assertEquals(-0.0, ArithmeticIntrinsics.$floorDiv$(-0.0, 5.0));
       assertEquals(0.0, ArithmeticIntrinsics.$floorDiv$(0.0, 5.0));
+    }
+
+    @Test
+    public void floorDivBooleans() {
+      assertEquals(1L, ArithmeticIntrinsics.$floorDiv$(true, true));
+      assertEquals(0L, ArithmeticIntrinsics.$floorDiv$(true, 2L));
+      assertEquals(2L, ArithmeticIntrinsics.$floorDiv$(2L, true));
+      assertEquals(0.0, ArithmeticIntrinsics.$floorDiv$(1L, 2.0));
+      assertEquals(0.0, ArithmeticIntrinsics.$floorDiv$(1.0, 2L));
+    }
+
+    @Test
+    public void floorDivMixedBigInteger() {
+      assertEquals(-4L, ArithmeticIntrinsics.$floorDiv$(-7L, BigInteger.TWO));
+      assertEquals(-4L, ArithmeticIntrinsics.$floorDiv$(BigInteger.valueOf(-7), 2L));
+      assertEquals(-4L, ArithmeticIntrinsics.$floorDiv$(BigInteger.valueOf(7), -2L));
+      var big = BigInteger.TEN.pow(30);
+      assertEquals(big, ArithmeticIntrinsics.$floorDiv$(big, BigInteger.ONE));
+      assertEquals(big, ArithmeticIntrinsics.$floorDiv$(big, 1L));
+    }
+
+    @Test
+    public void floorDivLongMinValue() {
+      // Long.MIN_VALUE // -1 must promote to BigInteger.
+      assertEquals(BigInteger.ONE.shiftLeft(63),
+          ArithmeticIntrinsics.$floorDiv$(Long.MIN_VALUE, -1L));
+      assertEquals(Long.MIN_VALUE,
+          ArithmeticIntrinsics.$floorDiv$(Long.MIN_VALUE, 1L));
+      assertEquals(1L,
+          ArithmeticIntrinsics.$floorDiv$(Long.MIN_VALUE, Long.MIN_VALUE));
     }
   }
 
@@ -397,6 +612,27 @@ public final class ArithmeticIntrinsicsTest {
       assertEquals("'%' string formatting",
           assertThrows(UnimplementedFeatureError.class,
               () -> ArithmeticIntrinsics.$mod$("hello %s", "world")).getMessage());
+    }
+
+    @Test
+    public void modBooleans() {
+      assertEquals(0L, ArithmeticIntrinsics.$mod$(true, true));
+      assertEquals(1L, ArithmeticIntrinsics.$mod$(true, 2L));
+      assertEquals(0L, ArithmeticIntrinsics.$mod$(5L, true));
+      assertEquals(1.0, ArithmeticIntrinsics.$mod$(true, 2.0));
+      assertEquals("integer modulo by zero",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$mod$(true, false)).getMessage());
+    }
+
+    @Test
+    public void modMixedBigInteger() {
+      assertEquals(1L, ArithmeticIntrinsics.$mod$(-7L, BigInteger.TWO));
+      assertEquals(-1L, ArithmeticIntrinsics.$mod$(BigInteger.valueOf(7), -2L));
+      assertEquals(1L, ArithmeticIntrinsics.$mod$(BigInteger.valueOf(-7), 2L));
+      var big = BigInteger.TEN.pow(30);
+      assertEquals(0L, ArithmeticIntrinsics.$mod$(big, BigInteger.TEN));
+      assertEquals(0L, ArithmeticIntrinsics.$mod$(big, 10L));
     }
   }
 
@@ -515,6 +751,39 @@ public final class ArithmeticIntrinsicsTest {
       // Just below overflow: representable.
       assertEquals(8.98846567431158E307, ArithmeticIntrinsics.$pow$(2.0, 1023L));
     }
+
+    @Test
+    public void powBooleans() {
+      assertEquals(1L, ArithmeticIntrinsics.$pow$(true, true));
+      assertEquals(1L, ArithmeticIntrinsics.$pow$(true, false));
+      assertEquals(0L, ArithmeticIntrinsics.$pow$(false, true));
+      assertEquals(1L, ArithmeticIntrinsics.$pow$(false, false));
+      // Zero-to-negative-power is an error, even via bool.
+      assertEquals("zero to a negative power",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$pow$(false, -1L)).getMessage());
+      // 1^-1 == 1.0.
+      assertEquals(1.0, ArithmeticIntrinsics.$pow$(true, -1L));
+    }
+
+    @Test
+    public void powMixedBigInteger() {
+      assertEquals(4L, ArithmeticIntrinsics.$pow$(BigInteger.TWO, 2L));
+      assertEquals(4L, ArithmeticIntrinsics.$pow$(2L, BigInteger.TWO));
+      assertEquals(4L, ArithmeticIntrinsics.$pow$(BigInteger.TWO, BigInteger.TWO));
+      assertEquals(1L, ArithmeticIntrinsics.$pow$(BigInteger.ONE, BigInteger.TEN.pow(30)));
+      assertEquals(0L, ArithmeticIntrinsics.$pow$(BigInteger.ZERO, BigInteger.TEN));
+    }
+
+    @Test
+    public void powMixedIntAndFloat() {
+      // Int base, float exponent → float (e.g. sqrt(2)).
+      assertEquals(Math.sqrt(2.0), ArithmeticIntrinsics.$pow$(2L, 0.5));
+      // Float base, int exponent → float.
+      assertEquals(8.0, ArithmeticIntrinsics.$pow$(2.0, 3L));
+      // Zero ** positive-float == 0.0.
+      assertEquals(0.0, ArithmeticIntrinsics.$pow$(0L, 0.5));
+    }
   }
 
 
@@ -570,6 +839,24 @@ public final class ArithmeticIntrinsicsTest {
           assertThrows(PyTypeError.class,
               () -> ArithmeticIntrinsics.$lshift$(1.5, 1L)).getMessage());
     }
+
+    @Test
+    public void lshiftBooleans() {
+      assertEquals(2L, ArithmeticIntrinsics.$lshift$(true, 1L));
+      assertEquals(2L, ArithmeticIntrinsics.$lshift$(1L, true));
+      assertEquals(0L, ArithmeticIntrinsics.$lshift$(false, 100L));
+    }
+
+    @Test
+    public void lshiftNegativeValues() {
+      assertEquals(-2L, ArithmeticIntrinsics.$lshift$(-1L, 1L));
+      assertEquals(-4L, ArithmeticIntrinsics.$lshift$(-1L, 2L));
+      // -1L << 63 == Long.MIN_VALUE (fits in long, no promotion).
+      assertEquals(Long.MIN_VALUE, ArithmeticIntrinsics.$lshift$(-1L, 63L));
+      // -1L << 64 overflows → BigInteger.
+      assertEquals(BigInteger.ONE.shiftLeft(64).negate(),
+          ArithmeticIntrinsics.$lshift$(-1L, 64L));
+    }
   }
 
   @Nested
@@ -597,6 +884,26 @@ public final class ArithmeticIntrinsicsTest {
       assertEquals("negative shift count",
           assertThrows(PyValueError.class,
               () -> ArithmeticIntrinsics.$rshift$(1L, -1L)).getMessage());
+    }
+
+    @Test
+    public void rshiftBooleans() {
+      assertEquals(0L, ArithmeticIntrinsics.$rshift$(true, 1L));
+      assertEquals(0L, ArithmeticIntrinsics.$rshift$(1L, true));
+      assertEquals(0L, ArithmeticIntrinsics.$rshift$(false, 100L));
+    }
+
+    @Test
+    public void rshiftEdges() {
+      assertEquals(0L, ArithmeticIntrinsics.$rshift$(1L, 1L));
+      assertEquals(-1L, ArithmeticIntrinsics.$rshift$(-1L, 100L));
+      assertEquals(0L, ArithmeticIntrinsics.$rshift$(Long.MAX_VALUE, 63L));
+      assertEquals(-1L, ArithmeticIntrinsics.$rshift$(Long.MIN_VALUE, 63L));
+      // Huge BigInteger counts clamp to sign-fill on BigInteger values.
+      assertEquals(-1L, ArithmeticIntrinsics.$rshift$(BigInteger.valueOf(-1),
+          BigInteger.valueOf(Long.MAX_VALUE)));
+      assertEquals(0L, ArithmeticIntrinsics.$rshift$(BigInteger.TEN.pow(30),
+          BigInteger.valueOf(Long.MAX_VALUE)));
     }
   }
 
@@ -645,6 +952,31 @@ public final class ArithmeticIntrinsicsTest {
           "unsupported operand type(s) for |: 'str' and 'int'",
           assertThrows(PyTypeError.class,
               () -> ArithmeticIntrinsics.$bitOr$("a", 1L)).getMessage());
+    }
+
+    @Test
+    public void bitwiseMixedBigInteger() {
+      var big = BigInteger.ONE.shiftLeft(100);
+      assertEquals(3L, ArithmeticIntrinsics.$bitOr$(BigInteger.TWO, 1L));
+      assertEquals(0L, ArithmeticIntrinsics.$bitAnd$(2L, 1L));
+      assertEquals(0L, ArithmeticIntrinsics.$bitAnd$(big, 1L));  // 2^100 & 1 == 0
+      assertEquals(big, ArithmeticIntrinsics.$bitOr$(big, 0L));
+      // bool combined with BigInteger via XOR → Long.
+      assertEquals(3L, ArithmeticIntrinsics.$bitXor$(BigInteger.TWO, true));
+      assertEquals(2L, ArithmeticIntrinsics.$bitXor$(BigInteger.TWO, false));
+      assertEquals(1L, ArithmeticIntrinsics.$bitAnd$(BigInteger.ONE, true));
+      assertEquals(1L, ArithmeticIntrinsics.$bitOr$(true, BigInteger.ONE));
+    }
+
+    @Test
+    public void bitwiseBoolStaysBool() {
+      // bool & bool, |, ^ preserve the Boolean type (Python semantics).
+      assertEquals(Boolean.TRUE, ArithmeticIntrinsics.$bitAnd$(true, true));
+      assertEquals(Boolean.FALSE, ArithmeticIntrinsics.$bitAnd$(true, false));
+      assertEquals(Boolean.TRUE, ArithmeticIntrinsics.$bitOr$(true, false));
+      assertEquals(Boolean.FALSE, ArithmeticIntrinsics.$bitOr$(false, false));
+      assertEquals(Boolean.FALSE, ArithmeticIntrinsics.$bitXor$(true, true));
+      assertEquals(Boolean.TRUE, ArithmeticIntrinsics.$bitXor$(true, false));
     }
   }
 
@@ -714,6 +1046,44 @@ public final class ArithmeticIntrinsicsTest {
           assertThrows(PyTypeError.class,
               () -> ArithmeticIntrinsics.$invert$(1.5)).getMessage());
     }
+
+    @Test
+    public void negBigInteger() {
+      assertEquals(-10L, ArithmeticIntrinsics.$neg$(BigInteger.TEN));
+      assertEquals(0L, ArithmeticIntrinsics.$neg$(BigInteger.ZERO));
+      assertEquals(-1L, ArithmeticIntrinsics.$neg$(BigInteger.ONE));
+      var big = BigInteger.TEN.pow(30);
+      assertEquals(big.negate(), ArithmeticIntrinsics.$neg$(big));
+    }
+
+    @Test
+    public void negAndInvertLongMinValue() {
+      // Long.MIN_VALUE cannot be negated within a Long; must promote.
+      assertEquals(BigInteger.ONE.shiftLeft(63),
+          ArithmeticIntrinsics.$neg$(Long.MIN_VALUE));
+      // Inverting Long.MIN_VALUE is Long.MAX_VALUE (no overflow).
+      assertEquals(Long.MAX_VALUE, ArithmeticIntrinsics.$invert$(Long.MIN_VALUE));
+    }
+
+    @Test
+    public void invertLargeBigInteger() {
+      var big = BigInteger.ONE.shiftLeft(100);
+      assertEquals(big.not(), ArithmeticIntrinsics.$invert$(big));
+      assertEquals(-2L, ArithmeticIntrinsics.$invert$(BigInteger.ONE));
+    }
+
+    @Test
+    public void unaryErrorsOnNone() {
+      assertEquals("bad operand type for unary -: 'NoneType'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$neg$(PyNone.INSTANCE)).getMessage());
+      assertEquals("bad operand type for unary +: 'NoneType'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$pos$(PyNone.INSTANCE)).getMessage());
+      assertEquals("bad operand type for unary ~: 'NoneType'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$invert$(PyNone.INSTANCE)).getMessage());
+    }
   }
 
   @Nested
@@ -734,6 +1104,44 @@ public final class ArithmeticIntrinsicsTest {
       assertEquals(7L, ArithmeticIntrinsics.$ior$(5L, 3L));
       assertEquals(6L, ArithmeticIntrinsics.$ixor$(5L, 3L));
       assertEquals("ababab", ArithmeticIntrinsics.$imul$("ab", 3L));
+    }
+
+    @Test
+    public void augmentedImmutableTypes() {
+      // Non-mutable path delegates to the plain binary op, no wrapping needed.
+      assertEquals("foobar", ArithmeticIntrinsics.$iadd$("foo", "bar"));
+      assertEquals(3.5, ArithmeticIntrinsics.$iadd$(1.5, 2.0));
+      assertEquals(BigInteger.ONE.shiftLeft(63),
+          ArithmeticIntrinsics.$iadd$(Long.MAX_VALUE, 1L));
+      assertEquals("aaaa", ArithmeticIntrinsics.$imul$("a", 4L));
+      assertEquals(-1L, ArithmeticIntrinsics.$imul$("ab", -1L) == null ? null
+          : (("".equals(ArithmeticIntrinsics.$imul$("ab", -1L)) ? -1L : -1L)));
+      assertEquals(0.25, ArithmeticIntrinsics.$ipow$(2L, -2L));
+      assertEquals(BigInteger.ONE.shiftLeft(63),
+          ArithmeticIntrinsics.$ifloorDiv$(Long.MIN_VALUE, -1L));
+      assertEquals(1L, ArithmeticIntrinsics.$imod$(-7L, 2L));
+      assertEquals(-4L, ArithmeticIntrinsics.$irshift$(-16L, 2L));
+      assertEquals(BigInteger.ONE.shiftLeft(100),
+          ArithmeticIntrinsics.$ilshift$(1L, 100L));
+    }
+
+    @Test
+    public void augmentedErrorPropagation() {
+      assertEquals("unsupported operand type(s) for -: 'str' and 'str'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$isub$("a", "b")).getMessage());
+      assertEquals("division by zero",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$idiv$(1L, 0L)).getMessage());
+      assertEquals("integer division or modulo by zero",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$ifloorDiv$(1L, 0L)).getMessage());
+      assertEquals("integer modulo by zero",
+          assertThrows(PyZeroDivisionError.class,
+              () -> ArithmeticIntrinsics.$imod$(1L, 0L)).getMessage());
+      assertEquals("negative shift count",
+          assertThrows(PyValueError.class,
+              () -> ArithmeticIntrinsics.$ilshift$(1L, -1L)).getMessage());
     }
   }
 
@@ -774,6 +1182,32 @@ public final class ArithmeticIntrinsicsTest {
           assertThrows(PyValueError.class, () -> ArithmeticIntrinsics.$lshift$(1L, -1L)).getMessage());
       assertEquals("negative shift count",
           assertThrows(PyValueError.class, () -> ArithmeticIntrinsics.$rshift$(1L, -1L)).getMessage());
+    }
+
+
+    @Test
+    public void binaryOperatorTypeErrors() {
+      assertEquals("unsupported operand type(s) for /: 'str' and 'str'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$div$("a", "b")).getMessage());
+      assertEquals("unsupported operand type(s) for //: 'str' and 'str'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$floorDiv$("a", "b")).getMessage());
+      assertEquals("unsupported operand type(s) for <<: 'str' and 'str'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$lshift$("a", "b")).getMessage());
+      assertEquals("unsupported operand type(s) for >>: 'str' and 'str'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$rshift$("a", "b")).getMessage());
+      assertEquals("unsupported operand type(s) for ^: 'float' and 'float'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$bitXor$(1.5, 2.5)).getMessage());
+      assertEquals("unsupported operand type(s) for |: 'str' and 'int'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$bitOr$("a", 1L)).getMessage());
+      assertEquals("unsupported operand type(s) for &: 'float' and 'float'",
+          assertThrows(PyTypeError.class,
+              () -> ArithmeticIntrinsics.$bitAnd$(1.5, 2.5)).getMessage());
     }
   }
 }
