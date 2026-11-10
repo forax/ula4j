@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt;
 
+import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 
 import java.util.AbstractList;
@@ -161,10 +162,29 @@ public final class PyList<E> extends AbstractList<E> {
   }
 
 
+  // -- Java API
+
   @Override
   public void add(int index, E element) {
     insert(index, element);
   }
+
+  @Override
+  public boolean equals(Object o) {
+    throw unhashable();
+  }
+
+  @Override
+  public int hashCode() {
+    throw unhashable();
+  }
+
+  private static PyTypeError unhashable() {
+    return new PyTypeError("unhashable type: 'list'");
+  }
+
+
+  // --
 
   private void ensureCapacity(int minimumCapacity) {
     if (minimumCapacity <= elements.length) {
