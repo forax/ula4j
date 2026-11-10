@@ -29,10 +29,10 @@ public final class PyFunction {
     final boolean varargs;
     final int captureCount;
 
-    final ModuleContext context;
-    final Stmt.FunctionDef functionDef;   // not compiled
+    final ModuleContext context;          // null if native
+    final Stmt.FunctionDef functionDef;   // null if native
 
-    // compiled (accessed under a lock on this)
+    // compiled (accessed under a lock on this unless native)
     volatile MethodHandle compiledEntry;
 
     // compiled entry but adapted to signature (Object[] captureArgs, Object self, Object arg0, Object arg1, ...)

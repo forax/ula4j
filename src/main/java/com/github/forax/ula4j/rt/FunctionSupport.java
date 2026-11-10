@@ -261,7 +261,8 @@ final class FunctionSupport {
       var compiledEntry = getCompiledEntry(function.code);
 
       var bound = compiledEntry.bindTo(function);
-      return MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
+      return MethodHandles.dropArguments(bound, 0, Object.class)  // drop the callee
+          .withVarargs(compiledEntry.isVarargsCollector());  // if native
     }
 
     static MethodHandle getEntry(PyFunction.Code code) {
@@ -284,13 +285,17 @@ final class FunctionSupport {
       if (compiledEntry != null) {
         return compiledEntry;
       }
+      if (code.functionDef == null) {  // native builtin function
+        return code.compiledEntry = Builtins.resolve(code);  // volatile write
+      }
       synchronized (code) {
         compiledEntry = code.compiledEntry;  // volatile read
-        if (compiledEntry == null) {
-          // try to find if there is already a cached compiled entry
-          compiledEntry = compileBody(code.context, code.functionDef);
-          code.compiledEntry = compiledEntry;  // volatile write
+        if (compiledEntry != null) {
+          return compiledEntry;
         }
+        // try to find if there is already a cached compiled entry
+        compiledEntry = compileBody(code.context, code.functionDef);
+        code.compiledEntry = compiledEntry;  // volatile write
         return compiledEntry;
       }
     }

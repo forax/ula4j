@@ -14,12 +14,10 @@ public final class ModuleContext {
 
   /// A module-level name. `null` means unbound.
   static final class GlobalCell {
-    private final ConcurrentHashMap<String, Object> builtins;
     private final String name;
     private volatile Object value;
 
-    private GlobalCell(ConcurrentHashMap<String, Object> builtins, String name) {
-      this.builtins = builtins;
+    private GlobalCell(String name) {
       this.name = name;
       super();
     }
@@ -29,7 +27,7 @@ public final class ModuleContext {
       if (value != null) {
         return value;
       }
-      var builtinValue = builtins.get(name);
+      var builtinValue = Builtins.BUILTINS.get(name);
       if (builtinValue != null) {
         return builtinValue;
       }
@@ -45,19 +43,17 @@ public final class ModuleContext {
   private final IdentityHashMap<Stmt.FunctionDef, FunctionScope> scopes;
 
   private final ConcurrentHashMap<String, GlobalCell> globals;
-  private final ConcurrentHashMap<String, Object> builtins;
 
   public ModuleContext() {
     scopes = new IdentityHashMap<>();
     globals = new ConcurrentHashMap<>();
-    builtins = new ConcurrentHashMap<>();
     super();
   }
 
   // ---- globals
 
   GlobalCell cell(String name) {
-    return globals.computeIfAbsent(name, n -> new GlobalCell(builtins, n));
+    return globals.computeIfAbsent(name, GlobalCell::new);
   }
 
   public Object getGlobal(String name) {
@@ -68,11 +64,6 @@ public final class ModuleContext {
     Objects.requireNonNull(name);
     Objects.requireNonNull(value);
     cell(name).set(value);
-  }
-  public void defineBuiltin(String name, Object value) {
-    Objects.requireNonNull(name);
-    Objects.requireNonNull(value);
-    builtins.put(name, value);
   }
 
   // ---- functions
