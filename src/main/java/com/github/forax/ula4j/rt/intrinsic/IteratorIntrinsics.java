@@ -1,8 +1,9 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
-import com.github.forax.ula4j.rt.PyIterator;
 import com.github.forax.ula4j.rt.PyIterator.StringIterator;
+import com.github.forax.ula4j.rt.PyIterator.ListIterator;
 import com.github.forax.ula4j.rt.PyIterator.TupleIterator;
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 
@@ -17,7 +18,7 @@ public final class IteratorIntrinsics {
     switch (iterable) {
       case PyTuple t -> { return new TupleIterator(t); }
       case String s -> { return new StringIterator(s); }
-      // TODO PyList, PyDict, PyRange
+      case PyList<?> list -> { return new ListIterator(list); }
       default -> throw new PyTypeError("'" + typeName(iterable) + "' object is not iterable");
     }
   }
@@ -25,8 +26,9 @@ public final class IteratorIntrinsics {
   @Intrinsic
   public static Object $next$(Object iterator) {
     switch (iterator) {
-      case PyIterator.StringIterator it -> { return it.next(); }
-      case PyIterator.TupleIterator it -> {  return it.next(); }
+      case StringIterator it -> { return it.next(); }
+      case TupleIterator it -> { return it.next(); }
+      case ListIterator it -> { return it.next(); }
       default -> throw new PyTypeError("'" + typeName(iterator) + "' object has no next");
     }
   }

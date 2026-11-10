@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyTypeError;
@@ -13,7 +14,7 @@ import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.toBigInteger;
 import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.toLong;
 import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.typeName;
 
-/// `==`, `!=`, `<`, `<=`, `>`, `>=`.
+/// Ordering comparisons `<`, `<=`, `>`, `>=`. Equality belongs to EqualityIntrinsics.
 ///
 /// Intrinsics return a primitive `boolean`; the compiler boxes it only when the result is used as a value.
 /// Numeric comparisons are exact (an int is never converted to double to be compared).
@@ -194,6 +195,9 @@ public final class ComparisonIntrinsics {
     if (left instanceof PyTuple l && right instanceof PyTuple r) {
       return tupleOrder(l, r, op);
     }
+    if (left instanceof PyList<?> l && right instanceof PyList<?> r) {
+      return listOrder(l, r, op);
+    }
     throw new PyTypeError("'" + symbol(op) + "' not supported between instances of '"
         + typeName(left) + "' and '" + typeName(right) + "'");
   }
@@ -232,7 +236,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < size; i++) {
       Object a = TupleIntrinsics.$get$(left, (long) i);
       Object b = TupleIntrinsics.$get$(right, (long) i);
-      if (a != b && !$eq$(a, b)) {  // reference shortcut, like PyObject_RichCompareBool
+      if (!$eq$(a, b)) {
         return false;
       }
     }
@@ -248,11 +252,26 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < common; i++) {
       Object a = TupleIntrinsics.$get$(left, (long) i);
       Object b = TupleIntrinsics.$get$(right, (long) i);
-      if (a != b && !$eq$(a, b)) {
+      if (!$eq$(a, b)) {
         return orderItems(a, b, op);
       }
     }
     return holds(op, Integer.signum(Long.compare(leftSize, rightSize)));
+  }
+
+  /// Lexicographic list ordering, using Python's identity-first element comparison.
+  private static boolean listOrder(PyList<?> left, PyList<?> right, int op) {
+    var leftSize = left.size();
+    var rightSize = right.size();
+    var common = Math.min(leftSize, rightSize);
+    for (var i = 0; i < common; i++) {
+      Object a = left.get(i);
+      Object b = right.get(i);
+      if (!$eq$(a, b)) {
+        return orderItems(a, b, op);
+      }
+    }
+    return holds(op, Integer.signum(Integer.compare(leftSize, rightSize)));
   }
 
   private static boolean orderItems(Object left, Object right, int op) {

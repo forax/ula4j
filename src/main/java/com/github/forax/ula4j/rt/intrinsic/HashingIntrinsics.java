@@ -1,7 +1,8 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
 //import com.github.forax.ula4j.rt.PyDict;
-//import com.github.forax.ula4j.rt.PyList;
+import com.github.forax.ula4j.rt.PyFunction;
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyTypeError;
@@ -45,10 +46,9 @@ public final class HashingIntrinsics {
       case Double floating -> { return hashDouble(floating); }
       case String string -> { return hashString(string); }
       case PyTuple tuple -> { return hashTuple(tuple); }
-      //case PyList _ -> throw unhashable("list");
-      //case PyDict _ -> throw unhashable("dict");
+      case PyList<?> _ -> { throw unhashable("list"); }
       case PyNone _ -> { return HASH_NONE; }
-      //case PyFunction _, PyType _ -> { return System.identityHashCode(value); }
+      case PyFunction function -> { return System.identityHashCode(function); }
       default -> throw new PyTypeError(
           "not a canonical runtime value: " + value.getClass().getName());
     }

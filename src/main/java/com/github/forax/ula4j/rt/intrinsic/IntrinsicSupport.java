@@ -1,6 +1,7 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
 import com.github.forax.ula4j.rt.PyFunction;
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyOverflowError;
@@ -78,6 +79,7 @@ public final class IntrinsicSupport {
       case String _ -> "str";
       case PyNone _ -> "NoneType";
       case PyTuple _ -> "tuple";
+      case PyList<?> _ -> "list";
       case PyFunction _ -> "function";           // new
       default -> throw new UnimplementedFeatureError("type name of " + value.getClass().getName());
     };

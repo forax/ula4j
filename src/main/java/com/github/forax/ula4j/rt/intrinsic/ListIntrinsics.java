@@ -5,8 +5,6 @@ import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.error.PyIndexError;
 import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 
-import java.util.List;
-
 /// Python-list operations.
 ///
 /// These methods are the semantic boundary between PyList's storage operations and the rest of

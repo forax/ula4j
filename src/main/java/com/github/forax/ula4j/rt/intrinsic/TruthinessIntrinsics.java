@@ -1,6 +1,7 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
 import com.github.forax.ula4j.rt.PyFunction;
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
@@ -21,6 +22,7 @@ public final class TruthinessIntrinsics {
       case PyNone _ -> { return false; }
       case BigInteger b -> { return b.signum() != 0; }
       case PyTuple t -> { return TupleIntrinsics.$size$(t) != 0L; }
+      case PyList<?> list -> { return !list.isEmpty(); }
       case PyFunction _ -> { return true; }
       default -> throw new UnimplementedFeatureError("truthiness of " + value.getClass().getName());
     }

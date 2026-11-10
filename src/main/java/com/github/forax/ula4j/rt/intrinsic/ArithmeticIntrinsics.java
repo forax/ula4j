@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
@@ -38,7 +39,7 @@ public final class ArithmeticIntrinsics {
   private static final int OR = 1;
   private static final int XOR = 2;
 
-  /// Largest string/tuple the JVM can allocate.
+  /// Largest sequence the JVM can allocate. ListIntrinsics applies the list-array limit.
   private static final int MAX_SEQUENCE_LENGTH = Integer.MAX_VALUE - 8;
 
   // ------------------------------------------------------------------ binary intrinsics
@@ -306,17 +307,32 @@ public final class ArithmeticIntrinsics {
   }
 
   // ------------------------------------------------------------------ augmented assignment
-  // Numbers, str and tuple are immutable, so `x op= y` is `x = x op y`.
-  // TODO when PyList exists: `$iadd$` and `$imul$` extend/repeat the list in place and return the same list.
+  // Mutable lists have in-place implementations; other supported values are immutable.
 
   @Intrinsic
-  public static Object $iadd$(Object left, Object right) { return $add$(left, right); }
+  @SuppressWarnings("unchecked")
+  public static Object $iadd$(Object left, Object right) {
+    switch (left) {
+      case PyList<?> list -> { return ListIntrinsics.$iadd$((PyList<Object>) list, right); }
+      default -> { return $add$(left, right); }
+    }
+  }
 
   @Intrinsic
   public static Object $isub$(Object left, Object right) { return $sub$(left, right); }
 
   @Intrinsic
-  public static Object $imul$(Object left, Object right) { return $mul$(left, right); }
+  public static Object $imul$(Object left, Object right) {
+    switch (left) {
+      case PyList<?> list -> {
+        if (!isInt(right)) {
+          throw nonIntRepeat(right);
+        }
+        return ListIntrinsics.$imul$(list, repeatCount(right));
+      }
+      default -> { return $mul$(left, right); }
+    }
+  }
 
   @Intrinsic
   public static Object $idiv$(Object left, Object right) { return $div$(left, right); }
@@ -360,11 +376,17 @@ public final class ArithmeticIntrinsics {
     if (left instanceof PyTuple l && right instanceof PyTuple r) {
       return concatTuples(l, r);
     }
+    if (left instanceof PyList<?> l && right instanceof PyList<?> r) {
+      return ListIntrinsics.$concat$(l, r);
+    }
     if (left instanceof String) {
       throw cannotConcatenate("str", right);
     }
     if (left instanceof PyTuple) {
       throw cannotConcatenate("tuple", right);
+    }
+    if (left instanceof PyList<?>) {
+      throw cannotConcatenate("list", right);
     }
     throw unsupportedOperands("+", left, right);
   }
@@ -406,7 +428,7 @@ public final class ArithmeticIntrinsics {
   }
 
   private static boolean isSequence(Object value) {
-    return value instanceof String || value instanceof PyTuple;
+    return value instanceof String || value instanceof PyTuple || value instanceof PyList;
   }
 
   private static PyTypeError nonIntRepeat(Object count) {
@@ -416,15 +438,19 @@ public final class ArithmeticIntrinsics {
   // ------------------------------------------------------------------ sequences
 
   private static Object repeat(Object sequence, Object count) {
-    long times;
-    switch (count) {
-      case BigInteger _ -> throw new PyOverflowError("cannot fit 'int' into an index-sized integer");
-      default -> times = com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.toLong(count);
-    }
+    var times = repeatCount(count);
     return switch (sequence) {
       case String s -> repeatString(s, times);
       case PyTuple t -> repeatTuple(t, times);
+      case PyList l -> ListIntrinsics.$repeat$(l, times);
       default -> throw new AssertionError("not a sequence: " + sequence);
+    };
+  }
+
+  private static long repeatCount(Object count) {
+    return switch (count) {
+      case BigInteger _ -> throw new PyOverflowError("cannot fit 'int' into an index-sized integer");
+      default -> IntrinsicSupport.toLong(count);
     };
   }
 

@@ -1,6 +1,10 @@
 package com.github.forax.ula4j.rt.specializer;
 
 import com.github.forax.ula4j.rt.intrinsic.ArithmeticIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.ContainmentIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.IteratorIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.ListIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.TruthinessIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.EqualityIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
@@ -109,9 +113,33 @@ public final class IntrinsicShapeTest {
   }
 
   @Test
+  public void listIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(ListIntrinsics.class);
+    assertTrue(typeSwitchCount(ListIntrinsics.class, "$iadd$") >= 1);
+  }
+
+  @Test
+  public void containmentIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(ContainmentIntrinsics.class);
+    assertTrue(typeSwitchCount(ContainmentIntrinsics.class, "$in$") >= 1);
+  }
+
+  @Test
+  public void iteratorIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(IteratorIntrinsics.class);
+    assertTrue(typeSwitchCount(IteratorIntrinsics.class, "$iterator$") >= 1);
+    assertTrue(typeSwitchCount(IteratorIntrinsics.class, "$next$") >= 1);
+  }
+
+  @Test
+  public void truthinessIntrinsicsHaveTheExpectedShape() throws IOException {
+    assertTypeSwitchShape(TruthinessIntrinsics.class);
+    assertTrue(typeSwitchCount(TruthinessIntrinsics.class, "$truthy$") >= 1);
+  }
+
+  @Test
   public void comparisonIntrinsicsHaveTheExpectedShape() throws IOException {
     assertTypeSwitchShape(ComparisonIntrinsics.class);
-    assertTrue(typeSwitchCount(ComparisonIntrinsics.class, "$eq$") >= 1);
     assertTrue(typeSwitchCount(ComparisonIntrinsics.class, "$lt$") >= 1);
   }
 
