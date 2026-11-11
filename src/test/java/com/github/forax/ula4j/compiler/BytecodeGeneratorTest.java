@@ -16,6 +16,7 @@ import java.math.BigInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public final class BytecodeGeneratorTest {
@@ -340,6 +341,7 @@ public final class BytecodeGeneratorTest {
           changed = f(original)
           """;
       var module = Compiler.run(source);
+
       assertEquals(10L, module.getGlobal("original"));
       assertEquals(11L, module.getGlobal("changed"));
     }
@@ -351,6 +353,7 @@ public final class BytecodeGeneratorTest {
     @Test
     public void chainedAssignment() {
       var module = Compiler.run("a = b = c = 1");
+
       assertEquals(1L, module.getGlobal("a"));
       assertEquals(1L, module.getGlobal("b"));
       assertEquals(1L, module.getGlobal("c"));
@@ -364,6 +367,7 @@ public final class BytecodeGeneratorTest {
     @Test
     public void reassignmentDoesNotAffectEarlierCopies() {
       var module = Compiler.run("x = 1\ny = x\nx = 2");
+
       assertEquals(2L, module.getGlobal("x"));
       assertEquals(1L, module.getGlobal("y"));
     }
@@ -619,6 +623,7 @@ public final class BytecodeGeneratorTest {
               value = 4
           r = value
           """;
+
       assertEquals(3L, eval(source, "r"));
     }
 
@@ -634,6 +639,7 @@ public final class BytecodeGeneratorTest {
               value = 3
           r = value
           """;
+
       assertEquals(3L, eval(source, "r"));
     }
 
@@ -650,6 +656,7 @@ public final class BytecodeGeneratorTest {
               value = 3
           r = value
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -664,6 +671,7 @@ public final class BytecodeGeneratorTest {
               z = x + y
           r = z
           """;
+
       assertEquals(11L, eval(source, "r"));
     }
 
@@ -679,6 +687,7 @@ public final class BytecodeGeneratorTest {
               i = 100
           r = i
           """;
+
       assertEquals(100L, eval(source, "r"));
     }
 
@@ -694,6 +703,7 @@ public final class BytecodeGeneratorTest {
               i = 100
           r = i
           """;
+
       assertEquals(3L, eval(source, "r"));
     }
 
@@ -709,6 +719,7 @@ public final class BytecodeGeneratorTest {
               s += i
           r = s
           """;
+
       assertEquals(12L, eval(source, "r"));
     }
 
@@ -722,6 +733,7 @@ public final class BytecodeGeneratorTest {
               x = 2
           r = x
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -735,6 +747,7 @@ public final class BytecodeGeneratorTest {
               i += 1
           r = total
           """;
+
       assertEquals(6L, eval(source, "r"));
     }
 
@@ -748,6 +761,7 @@ public final class BytecodeGeneratorTest {
               value = 3
           r = value
           """;
+
       assertEquals(3L, eval(source, "r"));
     }
 
@@ -765,6 +779,7 @@ public final class BytecodeGeneratorTest {
               total += 10
           r = total
           """;
+
       assertEquals(14L, eval(source, "r"));
     }
 
@@ -782,6 +797,7 @@ public final class BytecodeGeneratorTest {
               value = 100
           r = i + value
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -800,6 +816,7 @@ public final class BytecodeGeneratorTest {
                   total += 1
           r = total
           """;
+
       assertEquals(6L, eval(source, "r"));
     }
 
@@ -818,6 +835,7 @@ public final class BytecodeGeneratorTest {
                   total += 1
           r = total
           """;
+
       assertEquals(3L, eval(source, "r"));
     }
 
@@ -833,6 +851,7 @@ public final class BytecodeGeneratorTest {
               n += 10
           r = n
           """;
+
       assertEquals(12L, eval(source, "r"));
     }
 
@@ -848,6 +867,7 @@ public final class BytecodeGeneratorTest {
               n = 100
           r = n
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -861,6 +881,7 @@ public final class BytecodeGeneratorTest {
               n = 2
           r = n
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -874,6 +895,7 @@ public final class BytecodeGeneratorTest {
               s += 1
           r = s
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -893,6 +915,7 @@ public final class BytecodeGeneratorTest {
                   total += 1
           r = total
           """;
+
       assertEquals(3L, eval(source, "r"));
     }
 
@@ -907,6 +930,7 @@ public final class BytecodeGeneratorTest {
                   total += 1
           r = total
           """;
+
       assertEquals(4L, eval(source, "r"));
     }
 
@@ -918,6 +942,7 @@ public final class BytecodeGeneratorTest {
               result += ch
           r = result
           """;
+
       assertEquals("abcd", eval(source, "r"));
     }
 
@@ -932,6 +957,7 @@ public final class BytecodeGeneratorTest {
           r1 = count
           r2 = result
           """;
+
       var module = Compiler.run(source);
       assertEquals(3L, module.getGlobal("r1"));
       assertEquals("a😀b", module.getGlobal("r2"));
@@ -949,6 +975,7 @@ public final class BytecodeGeneratorTest {
               total += 10
           r = total
           """;
+
       assertEquals(12L, eval(source, "r"));
     }
 
@@ -961,6 +988,7 @@ public final class BytecodeGeneratorTest {
                   total += 1
           r = total
           """;
+
       assertEquals(6L, eval(source, "r"));
     }
 
@@ -976,6 +1004,7 @@ public final class BytecodeGeneratorTest {
               total += 10
           r = total
           """;
+
       assertEquals(12L, eval(source, "r"));
     }
 
@@ -994,6 +1023,7 @@ public final class BytecodeGeneratorTest {
               joined += ch
           r = count * 10 + (1 if joined == 'xy' else 0)
           """;
+
       assertEquals(21L, eval(source, "r"));
     }
   }
@@ -1029,6 +1059,7 @@ public final class BytecodeGeneratorTest {
           r2 = find('abc', 'z')
           """;
       var module = Compiler.run(source);
+
       assertEquals(1L, module.getGlobal("r1"));
       assertEquals(0L, module.getGlobal("r2"));
     }
@@ -1047,6 +1078,7 @@ public final class BytecodeGeneratorTest {
           z = sign(0)
           """;
       var module = Compiler.run(source);
+
       assertEquals(1L, module.getGlobal("p"));
       assertEquals(-1L, module.getGlobal("n"));
       assertEquals(0L, module.getGlobal("z"));
@@ -1065,6 +1097,7 @@ public final class BytecodeGeneratorTest {
           c = count(1, 2, 3)
           """;
       var module = Compiler.run(source);
+
       assertEquals(0L, module.getGlobal("a"));
       assertEquals(1L, module.getGlobal("b"));
       assertEquals(3L, module.getGlobal("c"));
@@ -1081,6 +1114,7 @@ public final class BytecodeGeneratorTest {
           r2 = many(1, 2, 3, 4, 5)
           """;
       var module = Compiler.run(source);
+
       assertEquals(42L, module.getGlobal("r1"));
       assertEquals(15L, module.getGlobal("r2"));
     }
@@ -1112,6 +1146,7 @@ public final class BytecodeGeneratorTest {
           c = choose(7)
           """;
       var module = Compiler.run(source);
+
       assertEquals(-1L, module.getGlobal("a"));
       assertEquals(0L, module.getGlobal("b"));
       assertEquals(1L, module.getGlobal("c"));
@@ -1128,6 +1163,7 @@ public final class BytecodeGeneratorTest {
           b = factorial(6)
           """;
       var module = Compiler.run(source);
+
       assertEquals(120L, module.getGlobal("a"));
       assertEquals(720L, module.getGlobal("b"));
     }
@@ -1143,6 +1179,7 @@ public final class BytecodeGeneratorTest {
           total += add(5, 6)
           r = total
           """;
+
       assertEquals(21L, eval(source, "r"));
     }
 
@@ -1159,6 +1196,7 @@ public final class BytecodeGeneratorTest {
           b = apply(double, 10)
           """;
       var module = Compiler.run(source);
+
       assertEquals(11L, module.getGlobal("a"));
       assertEquals(20L, module.getGlobal("b"));
     }
@@ -1175,6 +1213,7 @@ public final class BytecodeGeneratorTest {
           b = f()
           """;
       var module = Compiler.run(source);
+
       assertEquals(1L, module.getGlobal("a"));
       assertEquals(2L, module.getGlobal("b"));
     }
@@ -1191,6 +1230,7 @@ public final class BytecodeGeneratorTest {
           b = f(10, 20, 30)
           """;
       var module = Compiler.run(source);
+
       assertEquals(10L, module.getGlobal("a"));
       assertEquals(12L, module.getGlobal("b"));
     }
@@ -1207,6 +1247,7 @@ public final class BytecodeGeneratorTest {
           r2 = sum_from(5, 1, 2, 3)
           """;
       var module = Compiler.run(source);
+
       assertEquals(5L, module.getGlobal("r1"));
       assertEquals(11L, module.getGlobal("r2"));
     }
@@ -1221,6 +1262,7 @@ public final class BytecodeGeneratorTest {
               return n
           r = count(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
           """;
+
       assertEquals(10L, eval(source, "r"));
     }
 
@@ -1247,6 +1289,7 @@ public final class BytecodeGeneratorTest {
           first = f(1)
           f(1, 2)
           """;
+
       assertThrows(PyTypeError.class, () -> Compiler.run(source));
     }
   }
@@ -1264,6 +1307,7 @@ public final class BytecodeGeneratorTest {
               return get
           r = make()()
           """;
+
       assertEquals(1L, eval(source, "r"));
     }
 
@@ -1279,6 +1323,7 @@ public final class BytecodeGeneratorTest {
           x = 2
           r = f()
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -1295,6 +1340,7 @@ public final class BytecodeGeneratorTest {
           r2 = b(1)
           """;
       var module = Compiler.run(source);
+
       assertEquals(2L, module.getGlobal("r1"));
       assertEquals(11L, module.getGlobal("r2"));
     }
@@ -1310,6 +1356,7 @@ public final class BytecodeGeneratorTest {
               return b()
           r = a()
           """;
+
       assertEquals(42L, eval(source, "r"));
     }
 
@@ -1324,6 +1371,7 @@ public final class BytecodeGeneratorTest {
               return b()
           r = a(42)
           """;
+
       assertEquals(42L, eval(source, "r"));
     }
 
@@ -1338,6 +1386,7 @@ public final class BytecodeGeneratorTest {
               return fact(3)
           r = outer(1)
           """;
+
       assertEquals(6L, eval(source, "r"));
     }
 
@@ -1352,6 +1401,7 @@ public final class BytecodeGeneratorTest {
               return inner(1)
           r = outer(2)
           """;
+
       assertEquals(127L, eval(source, "r"));
     }
 
@@ -1369,6 +1419,7 @@ public final class BytecodeGeneratorTest {
           c = first()
           """;
       var module = Compiler.run(source);
+
       assertEquals(10L, module.getGlobal("a"));
       assertEquals(20L, module.getGlobal("b"));
       assertEquals(10L, module.getGlobal("c"));
@@ -1385,6 +1436,7 @@ public final class BytecodeGeneratorTest {
           f = make(3)
           r = f(4)
           """;
+
       assertEquals(13L, eval(source, "r"));
     }
 
@@ -1400,6 +1452,7 @@ public final class BytecodeGeneratorTest {
           f = outer(42)
           r = f()
           """;
+
       assertEquals(42L, eval(source, "r"));
     }
 
@@ -1415,6 +1468,7 @@ public final class BytecodeGeneratorTest {
           global_value = 5
           r = f()
           """;
+
       assertEquals(15L, eval(source, "r"));
     }
 
@@ -1429,6 +1483,7 @@ public final class BytecodeGeneratorTest {
               return inner()
           r = outer()
           """;
+
       assertEquals(2L, eval(source, "r"));
     }
 
@@ -1443,6 +1498,7 @@ public final class BytecodeGeneratorTest {
           b = make(8)
           r = a() * 10 + b()
           """;
+
       assertEquals(38L, eval(source, "r"));
     }
   }
@@ -1461,6 +1517,7 @@ public final class BytecodeGeneratorTest {
           r2 = f()
           """;
       var module = Compiler.run(source);
+
       assertEquals(2L, module.getGlobal("r1"));
       assertEquals(11L, module.getGlobal("r2"));
     }
@@ -1476,6 +1533,7 @@ public final class BytecodeGeneratorTest {
           r2 = x
           """;
       var module = Compiler.run(source);
+
       assertEquals(2L, module.getGlobal("r1"));
       assertEquals(1L, module.getGlobal("r2"));
     }
@@ -1489,6 +1547,7 @@ public final class BytecodeGeneratorTest {
           f()
           r = x
           """;
+
       assertThrows(PyNameError.class, () -> Compiler.run(source));
     }
 
@@ -1500,6 +1559,7 @@ public final class BytecodeGeneratorTest {
           later = 73
           r = read_later()
           """;
+
       assertEquals(73L, eval(source, "r"));
     }
 
@@ -1514,6 +1574,7 @@ public final class BytecodeGeneratorTest {
           second = read_value()
           """;
       var module = Compiler.run(source);
+
       assertEquals(1L, module.getGlobal("first"));
       assertEquals(99L, module.getGlobal("second"));
     }
@@ -1529,6 +1590,7 @@ public final class BytecodeGeneratorTest {
           global_copy = value
           """;
       var module = Compiler.run(source);
+
       assertEquals(7L, module.getGlobal("local"));
       assertEquals(100L, module.getGlobal("global_copy"));
     }
@@ -1540,6 +1602,7 @@ public final class BytecodeGeneratorTest {
               return never_defined
           f()
           """;
+
       assertThrows(PyNameError.class, () -> Compiler.run(source));
     }
 
@@ -1551,6 +1614,7 @@ public final class BytecodeGeneratorTest {
           f()
           result = created_inside
           """;
+
       assertThrows(PyNameError.class, () -> Compiler.run(source));
     }
   }
@@ -1561,12 +1625,14 @@ public final class BytecodeGeneratorTest {
     @Test
     public void emptyList() {
       var list = (PyList<?>) eval("x = []", "x");
+
       assertEquals(0, list.size());
     }
 
     @Test
     public void listWithElements() {
       var list = (PyList<?>) eval("x = [1, 2, 3]", "x");
+
       assertEquals(3, list.size());
       assertEquals(1L, list.get(0));
       assertEquals(2L, list.get(1));
@@ -1577,6 +1643,7 @@ public final class BytecodeGeneratorTest {
     public void nestedList() {
       var list = (PyList<?>) eval("x = [[1, 2], [3, 4]]", "x");
       assertEquals(2, list.size());
+
       var sub0 = (PyList<?>) list.getFirst();
       var sub1 = (PyList<?>) list.getLast();
       assertEquals(1L, sub0.getFirst());
@@ -1586,10 +1653,52 @@ public final class BytecodeGeneratorTest {
     @Test
     public void mixedTypes() {
       var list = (PyList<?>) eval("x = [1, 'a', True, None]", "x");
+
       assertEquals(1L, list.get(0));
       assertEquals("a", list.get(1));
       assertEquals(Boolean.TRUE, list.get(2));
       assertEquals(PyNone.INSTANCE, list.get(3));
+    }
+
+    @Test
+    public void elementsAreEvaluatedOnceFromLeftToRight() {
+      var list = (PyList<?>) eval("""
+          counter = [0]
+          def next_value():
+              counter[0] += 1
+              return counter[0]
+          result = [next_value(), next_value(), next_value()]
+          """, "result");
+
+      assertEquals(3, list.size());
+      assertEquals(1L, list.get(0));
+      assertEquals(2L, list.get(1));
+      assertEquals(3L, list.get(2));
+    }
+
+    @Test
+    public void eachListDisplayCreatesANewList() {
+      var module = Compiler.run("""
+          first = [1]
+          second = [1]
+          first[0] = 2
+          """);
+
+      var first = (PyList<?>) module.getGlobal("first");
+      var second = (PyList<?>) module.getGlobal("second");
+
+      assertNotSame(first, second);
+      assertEquals(2L, first.getFirst());
+      assertEquals(1L, second.getFirst());
+    }
+
+    @Test
+    public void nestedListDisplaysCreateIndependentChildren() {
+      var outer = (PyList<?>) eval("x = [[], []]", "x");
+      var first = (PyList<?>) outer.get(0);
+      var second = (PyList<?>) outer.get(1);
+
+      assertNotSame(first, second);
     }
   }
 
@@ -1611,6 +1720,32 @@ public final class BytecodeGeneratorTest {
       assertThrows(PyIndexError.class,
           () -> eval("x = [1]; y = x[2]", "y"));
     }
+
+    @Test
+    public void negativeIndexBoundaries() {
+      assertEquals(10L, eval("x = [10, 20, 30]; y = x[-3]", "y"));
+      assertEquals(30L, eval("x = [10, 20, 30]; y = x[-1]", "y"));
+      assertThrows(PyIndexError.class, () -> eval("x = [10, 20, 30]; y = x[-4]", "y"));
+    }
+
+    @Test
+    public void booleanIndicesAreAcceptedAsIntegerIndices() {
+      assertEquals(10L, eval("x = [10, 20]; y = x[False]", "y"));
+      assertEquals(20L, eval("x = [10, 20]; y = x[True]", "y"));
+    }
+
+    @Test
+    public void invalidIndexTypesRaiseTypeError() {
+      assertThrows(PyTypeError.class, () -> eval("x = [1]; y = x['0']", "y"));
+      assertThrows(PyTypeError.class, () -> eval("x = [1]; y = x[0.0]", "y"));
+      assertThrows(PyTypeError.class, () -> eval("x = [1]; y = x[None]", "y"));
+    }
+
+    @Test
+    public void bigIntegerIndexRaisesIndexError() {
+      assertThrows(PyIndexError.class,
+          () -> eval("x = [1]; y = x[9223372036854775808]", "y"));
+    }
   }
 
 
@@ -1619,6 +1754,7 @@ public final class BytecodeGeneratorTest {
     @Test
     public void setElement() {
       var list = (PyList<?>) eval("x = [1, 2, 3]; x[1] = 4", "x");
+
       assertEquals(1L, list.get(0));
       assertEquals(4L, list.get(1));
       assertEquals(3L, list.get(2));
@@ -1627,7 +1763,72 @@ public final class BytecodeGeneratorTest {
     @Test
     public void setNegativeIndex() {
       var list = (PyList<?>) eval("x = [1, 2, 3]; x[-1] = 9", "x");
+
       assertEquals(9L, list.get(2));
+    }
+
+    @Test
+    public void chainedSubscriptAssignmentStoresTheSameValueInBothTargets() {
+      var module = Compiler.run("""
+          calls = [0]
+          def next_value():
+              calls[0] += 1
+              return 7
+          left = [0]
+          right = [0]
+          left[0] = right[0] = next_value()
+          """);
+
+      assertEquals(7L, ((PyList<?>) module.getGlobal("left")).getFirst());
+      assertEquals(7L, ((PyList<?>) module.getGlobal("right")).getFirst());
+      assertEquals(1L, ((PyList<?>) module.getGlobal("calls")).getFirst());
+    }
+
+    @Test
+    public void subscriptAssignmentEvaluatesRightHandSideBeforeTheIndex() {
+      var module = Compiler.run("""
+          events = [0]
+          values = [0]
+          def right_hand_side():
+              events[0] = events[0] * 10 + 1
+              return 42
+          def index():
+              events[0] = events[0] * 10 + 2
+              return 0
+          values[index()] = right_hand_side()
+          """);
+
+      assertEquals(12L, ((PyList<?>) module.getGlobal("events")).getFirst());
+      assertEquals(42L, ((PyList<?>) module.getGlobal("values")).getFirst());
+    }
+
+    @Test
+    public void augmentedSubscriptAssignmentMutatesTheList() {
+      var list = (PyList<?>) eval("x = [2, 3]; x[0] += 5; x[-1] *= 4", "x");
+
+      assertEquals(7L, list.get(0));
+      assertEquals(12L, list.get(1));
+    }
+
+    @Test
+    public void augmentedSubscriptAssignmentEvaluatesContainerAndIndexOnce() {
+      var module = Compiler.run("""
+          values = [10]
+          calls = [0, 0]
+          def select_values():
+              calls[0] += 1
+              return values
+          def select_index():
+              calls[1] += 1
+              return 0
+          select_values()[select_index()] += 5
+          """);
+
+      assertEquals(15L, ((PyList<?>) module.getGlobal("values")).getFirst());
+
+      var calls = (PyList<?>) module.getGlobal("calls");
+      assertEquals(1L, calls.get(0));
+      assertEquals(1L, calls.get(1));
     }
   }
 
@@ -1636,9 +1837,29 @@ public final class BytecodeGeneratorTest {
     @Test
     public void deleteKey() {
       var list = (PyList<?>) eval("x = [1, 2, 3]; del x[1]", "x");
+
       assertEquals(2, list.size());
       assertEquals(1L, list.get(0));
       assertEquals(3L, list.get(1));
+    }
+
+    @Test
+    public void deleteWithNegativeIndex() {
+      var list = (PyList<?>) eval("x = [1, 2, 3]; del x[-1]", "x");
+
+      assertEquals(2, list.size());
+      assertEquals(1L, list.get(0));
+      assertEquals(2L, list.get(1));
+    }
+
+    @Test
+    public void deletingAnOutOfRangeIndexRaisesIndexError() {
+      assertThrows(PyIndexError.class, () -> Compiler.run("x = [1]; del x[1]"));
+    }
+
+    @Test
+    public void deletingWithANonIntegerIndexRaisesTypeError() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = [1]; del x['0']"));
     }
   }
 
@@ -1648,12 +1869,14 @@ public final class BytecodeGeneratorTest {
     @Test
     public void emptyDict() {
       var dict = (PyDict<?, ?>) eval("x = {}", "x");
+
       assertEquals(0, dict.size());
     }
 
     @Test
     public void dictWithEntries() {
       var dict = (PyDict<?, ?>) eval("x = {'a': 1, 'b': 2}", "x");
+
       assertEquals(2, dict.size());
       assertEquals(1L, dict.get("a"));
       assertEquals(2L, dict.get("b"));
@@ -1663,6 +1886,7 @@ public final class BytecodeGeneratorTest {
     public void nestedDict() {
       var dict = (PyDict<?, ?>) eval("x = {'a': {'b': 2}}", "x");
       var inner = (PyDict<?, ?>) dict.get("a");
+
       assertNotNull(inner);
       assertEquals(2L, inner.get("b"));
     }
@@ -1670,8 +1894,68 @@ public final class BytecodeGeneratorTest {
     @Test
     public void mixedKeyTypes() {
       var dict = (PyDict<?, ?>) eval("x = {1: 'a', 'b': 2}", "x");
+
       assertEquals("a", dict.get(1L));
       assertEquals(2L, dict.get("b"));
+    }
+
+    @Test
+    public void duplicateKeysReplaceTheEarlierValue() {
+      var dict = (PyDict<?, ?>) eval("x = {'key': 1, 'key': 2}", "x");
+
+      assertEquals(1, dict.size());
+      assertEquals(2L, dict.get("key"));
+    }
+
+    @Test
+    public void equalNumericKeysReferToTheSameEntry() {
+      var dict = (PyDict<?, ?>) eval("x = {1: 'integer', True: 'boolean'}", "x");
+
+      assertEquals(1, dict.size());
+      assertEquals("boolean", dict.get(1L));
+      assertEquals("boolean", dict.get(Boolean.TRUE));
+    }
+
+    @Test
+    public void noneCanBeUsedAsAKeyAndAsAValue() {
+      var dict = (PyDict<?, ?>) eval("x = {None: None, 'empty': None}", "x");
+
+      assertEquals(2, dict.size());
+      assertEquals(PyNone.INSTANCE, dict.get(PyNone.INSTANCE));
+      assertEquals(PyNone.INSTANCE, dict.get("empty"));
+    }
+
+    @Test
+    public void keysAndValuesAreEvaluatedOnceFromLeftToRight() {
+      var dict = (PyDict<?, ?>) eval("""
+          counter = [0]
+          def next_value():
+              counter[0] += 1
+              return counter[0]
+          result = {
+              next_value(): next_value(),
+              next_value(): next_value()
+          }
+          """, "result");
+
+      assertEquals(2, dict.size());
+      assertEquals(2L, dict.get(1L));
+      assertEquals(4L, dict.get(3L));
+    }
+
+    @Test
+    public void eachDictDisplayCreatesANewDictionary() {
+      var module = Compiler.run("""
+          first = {'key': 1}
+          second = {'key': 1}
+          first['key'] = 2
+          """);
+      var first = (PyDict<?, ?>) module.getGlobal("first");
+      var second = (PyDict<?, ?>) module.getGlobal("second");
+
+      assertNotSame(first, second);
+      assertEquals(2L, first.get("key"));
+      assertEquals(1L, second.get("key"));
     }
   }
 
@@ -1688,6 +1972,16 @@ public final class BytecodeGeneratorTest {
       assertThrows(PyKeyError.class,
           () -> eval("x = {}; y = x['a']", "y"));
     }
+
+    @Test
+    public void noneValueIsNotConfusedWithAMissingKey() {
+      assertEquals(PyNone.INSTANCE, eval("x = {'key': None}; y = x['key']", "y"));
+    }
+
+    @Test
+    public void unhashableListKeyRaisesTypeError() {
+      assertThrows(PyTypeError.class, () -> eval("x = {}; y = x[[1]]", "y"));
+    }
   }
 
 
@@ -1696,6 +1990,7 @@ public final class BytecodeGeneratorTest {
     @Test
     public void setNewKey() {
       var dict = (PyDict<?, ?>) eval("x = {'a': 1}; x['b'] = 2", "x");
+
       assertEquals(2, dict.size());
       assertEquals(2L, dict.get("b"));
     }
@@ -1703,8 +1998,36 @@ public final class BytecodeGeneratorTest {
     @Test
     public void overwriteKey() {
       var dict = (PyDict<?, ?>) eval("x = {'a': 1}; x['a'] = 9", "x");
+
       assertEquals(1, dict.size());
       assertEquals(9L, dict.get("a"));
+    }
+
+    @Test
+    public void augmentedSubscriptAssignmentUpdatesDictionaryValue() {
+      var dict = (PyDict<?, ?>) eval("x = {'count': 2}; x['count'] += 3", "x");
+
+      assertEquals(1, dict.size());
+      assertEquals(5L, dict.get("count"));
+    }
+
+    @Test
+    public void nestedContainersCanBeUpdatedThroughChainedSubscripts() {
+      var dict = (PyDict<?, ?>) eval("""
+          x = {'items': [[1]]}
+          x['items'][0][0] = 9
+          """, "x");
+
+      var items = (PyList<?>) dict.get("items");
+      assertNotNull(items);
+      var first = (PyList<?>) items.getFirst();
+      assertNotNull(first);
+      assertEquals(9L, first.getFirst());
+    }
+
+    @Test
+    public void unhashableKeyCannotBeAssigned() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = {}; x[[1]] = 2"));
     }
   }
 
@@ -1717,8 +2040,50 @@ public final class BytecodeGeneratorTest {
       assertEquals(1, dict.size());
       assertFalse(dict.containsKey("a"));
     }
+
+    @Test
+    public void deletingAMissingKeyRaisesKeyError() {
+      assertThrows(PyKeyError.class, () -> Compiler.run("x = {'a': 1}; del x['missing']"));
+    }
+
+    @Test
+    public void unhashableKeyCannotBeDeleted() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = {}; del x[[1]]"));
+    }
   }
 
+
+
+  @Nested
+  public final class ContainerOperations {
+    @Test
+    public void containmentUsesListElementsAndDictionaryKeys() {
+      assertEquals(true, eval("x = 2 in [1, 2]", "x"));
+      assertEquals(false, eval("x = 3 in [1, 2]", "x"));
+      assertEquals(true, eval("x = 'key' in {'key': 'value'}", "x"));
+      assertEquals(false, eval("x = 'value' in {'key': 'value'}", "x"));
+    }
+
+    @Test
+    public void emptyAndNonEmptyContainersHaveExpectedTruthiness() {
+      assertEquals(true, eval("x = not []", "x"));
+      assertEquals(true, eval("x = not {}", "x"));
+      assertEquals(false, eval("x = not [0]", "x"));
+      assertEquals(false, eval("x = not {'key': None}", "x"));
+    }
+
+    @Test
+    public void listEqualityComparesNestedContents() {
+      assertEquals(true, eval("x = [1, [2]] == [1, [2]]", "x"));
+      assertEquals(false, eval("x = [1, [2]] == [1, [3]]", "x"));
+    }
+
+    @Test
+    public void dictionaryEqualityIgnoresInsertionOrder() {
+      assertEquals(true,
+          eval("x = {'a': 1, 'b': [2]} == {'b': [2], 'a': 1}", "x"));
+    }
+  }
 
 
   @Nested
@@ -1786,6 +2151,7 @@ public final class BytecodeGeneratorTest {
         source.append('v').append(i);
       }
       source.append('\n');
+
       assertEquals(expected, eval(source.toString(), "result"));
     }
 
@@ -1797,6 +2163,7 @@ public final class BytecodeGeneratorTest {
         source.append("    total += value").append(i).append('\n');
       }
       source.append("    return total\nr = calculate(10)\n");
+
       assertEquals(10L + (59L * 60L / 2L), eval(source.toString(), "r"));
     }
 
@@ -1807,6 +2174,7 @@ public final class BytecodeGeneratorTest {
               return a + b * 10 + c * 100 + d * 1000 + e * 10000 + f * 100000 + g * 1000000 + h * 10000000
           r = combine(1, 2, 3, 4, 5, 6, 7, 8)
           """;
+
       assertEquals(87_654_321L, eval(source, "r"));
     }
 
@@ -1836,6 +2204,7 @@ public final class BytecodeGeneratorTest {
               total += 10
           r = total
           """;
+
       assertEquals(18L, eval(source, "r"));
     }
 
@@ -1855,6 +2224,7 @@ public final class BytecodeGeneratorTest {
           get_values = outer()
           r = get_values()
           """;
+
       assertEquals(21L, eval(source, "r"));
     }
   }
