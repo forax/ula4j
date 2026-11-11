@@ -165,7 +165,7 @@ final class FunctionSupport {
       }
 
       private static PyTuple restTuple(Object[] args, int start) {
-        return TupleIntrinsics.fromArray(Arrays.copyOfRange(args, start, args.length));
+        return TupleIntrinsics.fromArrayRange(args, start);
       }
     }
 

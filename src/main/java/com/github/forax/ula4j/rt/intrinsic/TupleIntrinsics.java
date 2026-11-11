@@ -8,6 +8,8 @@ import com.github.forax.ula4j.rt.PyTuple.PyTuple4;
 import com.github.forax.ula4j.rt.PyTuple.PyTupleN;
 import com.github.forax.ula4j.rt.error.PyIndexError;
 
+import java.util.Arrays;
+
 /// Python tuple operations for every tuple shape.
 ///
 /// The `switch` selectors are cast to `Object`: javac puts the static type of the selector in the
@@ -17,16 +19,15 @@ public final class TupleIntrinsics {
     throw new AssertionError();
   }
 
-  private static final PyTuple EMPTY = new PyTupleN(new Object[0]);
+  private static final PyTuple TUPLE_EMPTY = new PyTupleN(new Object[0]);
 
-  // ---------------------------------------------------------------------------------------------
-  // construction (not intrinsics)
+  // -- construction (not intrinsics)
 
   /// Builds a tuple in its canonical shape: arity 1-4 use a fixed record, 0 and 5+ use PyTupleN.
   /// The array is not retained.
   public static PyTuple fromArray(Object... items) {
     return switch (items.length) {
-      case 0 -> EMPTY;
+      case 0 -> TUPLE_EMPTY;
       case 1 -> new PyTuple1(items[0]);
       case 2 -> new PyTuple2(items[0], items[1]);
       case 3 -> new PyTuple3(items[0], items[1], items[2]);
@@ -35,8 +36,20 @@ public final class TupleIntrinsics {
     };
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // len(t), t[i]
+  /// Tuple extracted from `items[start..]`.
+  public static PyTuple fromArrayRange(Object[] items, int start) {
+    return switch (items.length - start) {
+      case 0 -> TUPLE_EMPTY;
+      case 1 -> new PyTuple1(items[start]);
+      case 2 -> new PyTuple2(items[start], items[start + 1]);
+      case 3 -> new PyTuple3(items[start], items[start + 1], items[start + 2]);
+      case 4 -> new PyTuple4(items[start], items[start + 1], items[start + 2], items[start + 3]);
+      default -> new PyTupleN(start == 0 ? items : Arrays.copyOfRange(items, start, items.length));
+    };
+  }
+
+
+  // -- len(t), t[i]
 
   /// Python `len(tuple)`.
   @Intrinsic
@@ -79,8 +92,8 @@ public final class TupleIntrinsics {
     }
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // a + b, t * n
+
+  // -- a + b, t * n
 
   /// Python `left + right` for two tuples (the type check for other operands belongs to `add`).
   @Intrinsic
@@ -108,7 +121,7 @@ public final class TupleIntrinsics {
   public static PyTuple $repeat$(PyTuple tuple, long count) {
     var size = $size$(tuple);
     if (count <= 0 || size == 0) {
-      return EMPTY;
+      return TUPLE_EMPTY;
     }
     if (count == 1) {
       return tuple;
@@ -126,8 +139,8 @@ public final class TupleIntrinsics {
     return fromArray(items);
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // helpers (not intrinsics: they call the generic intrinsics directly)
+
+  // -- helpers (not intrinsics: they call the generic intrinsics directly)
 
   /// Normalizes a possibly negative index, or raises IndexError.
   private static int checkedIndex(long index, int size) {
