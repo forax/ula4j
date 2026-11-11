@@ -1,5 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyFunction;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
@@ -14,10 +15,10 @@ import java.math.BigInteger;
 /// Nothing here is specialized: these methods are plain static calls.
 public final class IntrinsicSupport {
   private IntrinsicSupport() {
-    throw new AssertionError("no instances");
+    throw new AssertionError();
   }
 
-  /// `int` and `bool` (a `bool` is an `int` in every numeric operation).
+  /// int and bool (a bool is an int in every numeric operation).
   static boolean isInt(Object value) {
     return value instanceof Long || value instanceof BigInteger || value instanceof Boolean;
   }
@@ -26,7 +27,7 @@ public final class IntrinsicSupport {
     return isInt(value) || value instanceof Double;
   }
 
-  /// Valid for a `Long` or a `Boolean` only.
+  /// Valid for a Long or a Boolean only.
   static long toLong(Object value) {
     return switch (value) {
       case Long l -> l;
@@ -61,7 +62,7 @@ public final class IntrinsicSupport {
     };
   }
 
-  /// Keeps the invariant "a BigInteger never holds a value that fits in a long".
+  /// Keeps the invariant that a BigInteger never holds a value that fits in a long.
   static Object normalize(BigInteger value) {
     if (value.bitLength() < 64) {
       return value.longValue();
@@ -69,8 +70,7 @@ public final class IntrinsicSupport {
     return value;
   }
 
-  /// The name `type(value).__name__` would report.
-  /// Placeholder until PyType exists; extend it with PyList, PyDict, PyRange, ...
+  /// The name that type(value).__name__ would report.
   public static String typeName(Object value) {
     return switch (value) {
       case Long _, BigInteger _ -> "int";
@@ -80,7 +80,8 @@ public final class IntrinsicSupport {
       case PyNone _ -> "NoneType";
       case PyTuple _ -> "tuple";
       case PyList<?> _ -> "list";
-      case PyFunction _ -> "function";           // new
+      case PyDict _ -> "dict";
+      case PyFunction _ -> "function";
       default -> throw new UnimplementedFeatureError("type name of " + value.getClass().getName());
     };
   }

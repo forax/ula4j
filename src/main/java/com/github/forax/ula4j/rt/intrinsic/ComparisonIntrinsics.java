@@ -1,5 +1,7 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyDict;
+import com.github.forax.ula4j.rt.PyFunction;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple;
@@ -14,30 +16,27 @@ import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.toBigInteger;
 import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.toLong;
 import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.typeName;
 
-/// Ordering comparisons `<`, `<=`, `>`, `>=`. Equality belongs to EqualityIntrinsics.
+/// Python equality and ordering comparisons.
 ///
-/// Intrinsics return a primitive `boolean`; the compiler boxes it only when the result is used as a value.
-/// Numeric comparisons are exact (an int is never converted to double to be compared).
-/// Container comparisons use a reference-equality shortcut on the items before calling `$eq$`,
-/// as CPython does. Top-level `==` has no such shortcut, so `nan == nan` is False.
+/// Numeric comparisons are exact (an int is never converted to double to be compared). Container
+/// comparisons use a reference-equality shortcut on elements, as CPython does. Top-level NaN
+/// equality still returns false, even when the same boxed Double object is compared with itself.
 public final class ComparisonIntrinsics {
   private ComparisonIntrinsics() {
     throw new AssertionError();
   }
 
-  // result of the three-way helpers
   private static final int LESS = -1;
   private static final int EQUAL = 0;
   private static final int GREATER = 1;
-  private static final int UNORDERED = 2;  // at least one NaN
+  private static final int UNORDERED = 2;
 
-  // ordering operators (compile-time constants, so they are inlined in specialized classes)
   private static final int LT = 0;
   private static final int LE = 1;
   private static final int GT = 2;
   private static final int GE = 3;
 
-  // ------------------------------------------------------------------ intrinsics
+  // --- equality
 
   @Intrinsic
   public static boolean $eq$(Object left, Object right) {
@@ -50,7 +49,7 @@ public final class ComparisonIntrinsics {
       }
       case Double l -> {
         switch (right) {
-          case Double r -> { return l.doubleValue() == r.doubleValue(); }  // NaN != NaN, -0.0 == 0.0
+          case Double r -> { return l.doubleValue() == r.doubleValue(); }
           default -> { return numericEquals(left, right); }
         }
       }
@@ -75,7 +74,14 @@ public final class ComparisonIntrinsics {
           default -> { return false; }
         }
       }
-      // TODO PyList, PyDict, PyRange, PySlice, PyFunction, PyType
+      case PyDict l -> {
+        switch (right) {
+          case PyDict r -> { return DictIntrinsics.equals(l, r); }
+          default -> { return false; }
+        }
+      }
+      case PyFunction l -> { return right == l; }  // Python functions compare by identity in this runtime.
+      // TODO PyRange, PySlice, PyType
       default -> throw unimplemented("==", left);
     }
   }
@@ -84,6 +90,8 @@ public final class ComparisonIntrinsics {
   public static boolean $ne$(Object left, Object right) {
     return !$eq$(left, right);
   }
+
+  // -- ordering
 
   @Intrinsic
   public static boolean $lt$(Object left, Object right) {
@@ -307,8 +315,7 @@ public final class ComparisonIntrinsics {
 
   // ------------------------------------------------------------------ strings
 
-  /// Orders by Unicode code point. `String.compareTo` orders by UTF-16 code unit, which is wrong
-  /// when a supplementary character is compared with a BMP character above U+D7FF.
+  /// Orders by Unicode code point, not UTF-16 code unit.
   private static int compareCodePoints(String left, String right) {
     var leftIndex = 0;
     var rightIndex = 0;
@@ -354,7 +361,7 @@ public final class ComparisonIntrinsics {
 
   private static int compareInts(Object left, Object right) {
     if (left instanceof BigInteger || right instanceof BigInteger) {
-      return toBigInteger(left).compareTo(toBigInteger(right));  // -1, 0 or 1
+      return toBigInteger(left).compareTo(toBigInteger(right));
     }
     return Long.compare(toLong(left), toLong(right));
   }
@@ -367,7 +374,7 @@ public final class ComparisonIntrinsics {
       if (Double.isInfinite(d)) {
         return d > 0 ? LESS : GREATER;
       }
-      return Integer.signum(new BigDecimal(big).compareTo(new BigDecimal(d)));  // both exact
+      return Integer.signum(new BigDecimal(big).compareTo(new BigDecimal(d)));
     }
     return compareLongWithDouble(toLong(integer), d);
   }
@@ -382,11 +389,11 @@ public final class ComparisonIntrinsics {
     if (d < -0x1p63) {
       return GREATER;
     }
-    var truncated = (long) d;  // exact integral part, |d| < 2**63
+    var truncated = (long) d;
     if (l != truncated) {
       return Long.compare(l, truncated);
     }
-    var fraction = d - truncated;  // exact
+    var fraction = d - truncated;
     if (fraction > 0) { return LESS; }
     if (fraction < 0) { return GREATER; }
     return EQUAL;

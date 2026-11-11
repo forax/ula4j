@@ -1,12 +1,13 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 
 import static com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport.typeName;
 
-/// `item in container` (the operands keep their source order).
+/// Implements {@code item in container}. Operands keep their source order.
 public final class ContainmentIntrinsics {
   private ContainmentIntrinsics() { throw new AssertionError(); }
 
@@ -20,8 +21,9 @@ public final class ContainmentIntrinsics {
               "'in <string>' requires string as left operand, not " + typeName(item));
         }
       }
-      case PyTuple t -> { return tupleContains(t, item); }
+      case PyTuple tuple -> { return tupleContains(tuple, item); }
       case PyList<?> list -> { return listContains(list, item); }
+      case PyDict dict -> { return DictIntrinsics.containsKey(dict, item); }
       default -> throw new PyTypeError("argument of type '" + typeName(container) + "' is not iterable");
     }
   }

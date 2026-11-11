@@ -1,6 +1,6 @@
-
 package com.github.forax.ula4j.rt.intrinsic;
 
+import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyFunction;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
@@ -22,7 +22,7 @@ public final class StringIntrinsics {
   private static final int MAX_INT_STR_DIGITS = 4_300;
 
   //  FIXME use ScopeValue instead
-  // Shared by tuple/list repr so mixed recursive structures are handled correctly.
+  // Shared by recursive tuple/list/dict repr so mixed cycles are handled correctly.
   private static final ThreadLocal<IdentityHashMap<Object, Boolean>> ACTIVE_REPR =
       ThreadLocal.withInitial(IdentityHashMap::new);
 
@@ -37,6 +37,7 @@ public final class StringIntrinsics {
       case PyNone _ -> "None";
       case PyTuple t -> tupleRepr(t);
       case PyList<?> list -> listRepr(list);
+      case PyDict<?,?> dict -> dictRepr(dict);
       case PyFunction f -> functionRepr(f);
       default -> throw unsupported(value);
     };
@@ -48,6 +49,7 @@ public final class StringIntrinsics {
       case String s -> quoteString(s);
       case PyTuple t -> tupleRepr(t);
       case PyList<?> list -> listRepr(list);
+      case PyDict<?,?> dict -> dictRepr(dict);
       case Boolean b -> b ? "True" : "False";
       case Long l -> Long.toString(l);
       case BigInteger b -> intString(b);
@@ -58,7 +60,7 @@ public final class StringIntrinsics {
     };
   }
 
-  // -- Scalar values
+  // -- scalar values
 
   private static String intString(BigInteger value) {
     var result = value.toString();
@@ -74,7 +76,6 @@ public final class StringIntrinsics {
     }
     return result;
   }
-
 
   private static String floatString(double value) {
     if (Double.isNaN(value)) {
@@ -112,8 +113,6 @@ public final class StringIntrinsics {
           + exponentDigits;
     } else {
       body = decimal.toPlainString();
-
-      // A floating-point value must remain distinguishable from an int.
       if (decimal.scale() <= 0) {
         body += ".0";
       }
@@ -122,10 +121,7 @@ public final class StringIntrinsics {
     return negative ? "-" + body : body;
   }
 
-  /// Finds a shortest decimal representation which round-trips to
-  /// exactly the original binary64 value.
-  /// 17 significant decimal digits are sufficient for every finite
-  /// IEEE-754 binary64 value.
+  /// Finds a shortest decimal representation which round-trips to exactly the original binary64.
   private static BigDecimal shortestRoundTripDecimal(double value) {
     var exact = new BigDecimal(value);
     var exponent = exact.precision() - exact.scale() - 1;
@@ -141,14 +137,12 @@ public final class StringIntrinsics {
       BigDecimal bestDistance = null;
       boolean bestEven = false;
 
-      // Check the nearest decimal integer and its neighbours.
       for (var delta = -1; delta <= 1; delta++) {
         var coefficient = nearest.add(BigInteger.valueOf(delta));
         if (coefficient.signum() <= 0) {
           continue;
         }
-        var candidate = new BigDecimal(coefficient, scale)
-            .stripTrailingZeros();
+        var candidate = new BigDecimal(coefficient, scale).stripTrailingZeros();
         if (candidate.precision() > precision) {
           continue;
         }
@@ -158,12 +152,8 @@ public final class StringIntrinsics {
         }
         var distance = candidate.subtract(exact).abs();
         var even = !coefficient.testBit(0);
-        var comparison = bestDistance == null
-            ? -1
-            : distance.compareTo(bestDistance);
-        if (best == null
-            || comparison < 0
-            || (comparison == 0 && even && !bestEven)) {
+        var comparison = bestDistance == null ? -1 : distance.compareTo(bestDistance);
+        if (best == null || comparison < 0 || (comparison == 0 && even && !bestEven)) {
           best = candidate;
           bestDistance = distance;
           bestEven = even;
@@ -235,6 +225,32 @@ public final class StringIntrinsics {
     }
   }
 
+  private static String dictRepr(PyDict dict) {
+    if (!enterRepr(dict)) {
+      return "{...}";
+    }
+    try {
+      var builder = new StringBuilder();
+      builder.append('{');
+      var first = true;
+      for (var i = 0; i < dict.entryCount(); i++) {
+        if (!dict.isLive(i)) {
+          continue;
+        }
+        if (!first) {
+          builder.append(", ");
+        }
+        first = false;
+        builder.append($repr$(dict.keyAt(i)));
+        builder.append(": ");
+        builder.append($repr$(dict.valueAt(i)));
+      }
+      return builder.append('}').toString();
+    } finally {
+      leaveRepr(dict);
+    }
+  }
+
   private static boolean enterRepr(Object value) {
     var active = ACTIVE_REPR.get();
     if (active.containsKey(value)) {
@@ -252,8 +268,7 @@ public final class StringIntrinsics {
     }
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // String repr
+  // -- string representation
 
   private static String quoteString(String value) {
     var hasSingleQuote = value.indexOf('\'') >= 0;
@@ -293,13 +308,7 @@ public final class StringIntrinsics {
     if (cp == 0x20) {
       return true;
     }
-
-    // Character categories corresponding to Python's non-printable
-    // Unicode general categories.
-    //
-    // For exact CPython 3.14 compatibility, this must use a table
-    // generated from Unicode 16.0.0, rather than the JDK's Unicode
-    // database.
+    // Exact CPython compatibility requires the Unicode 16.0 database, not the JDK's database.
     return switch (Character.getType(cp)) {
       case Character.CONTROL,
            Character.FORMAT,
@@ -334,11 +343,7 @@ public final class StringIntrinsics {
     }
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // Errors
-
   private static UnimplementedFeatureError unsupported(Object value) {
-    return new UnimplementedFeatureError(
-        "str of " + value.getClass().getName());
+    return new UnimplementedFeatureError("str of " + value.getClass().getName());
   }
 }

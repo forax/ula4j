@@ -1,6 +1,6 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
-//import com.github.forax.ula4j.rt.PyDict;
+import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyFunction;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
@@ -11,9 +11,9 @@ import java.math.BigInteger;
 
 /// Python-compatible hashing for the runtime's canonical value representations.
 ///
-/// Only the hashes of `bool`, `int` and `float` are specified (they follow the 64-bit CPython
-/// algorithm). The hashes of `str`, `tuple` and `None` are implementation details: they only
-/// guarantee that equal values have equal hashes, and must never be printed or asserted.
+/// Only the hashes of bool, int and float are specified (they follow the 64-bit CPython algorithm).
+/// Hashes of str, tuple, None and functions are implementation details. Equal values must have
+/// equal hashes; tests must not assert the unspecified hash values.
 public final class HashingIntrinsics {
   private HashingIntrinsics() {
     throw new AssertionError();
@@ -31,12 +31,11 @@ public final class HashingIntrinsics {
   private static final long HASH_NAN = 0L;
   private static final long HASH_NONE = 0xFCA86420L;
 
-  // xxHash64 primes, as used by CPython's tuple hash since 3.8
+  // xxHash64 primes, as used by CPython's tuple hash since 3.8.
   private static final long XXPRIME_1 = 0x9E3779B185EBCA87L;
   private static final long XXPRIME_2 = 0xC2B2AE3D27D4EB4FL;
   private static final long XXPRIME_5 = 0x27D4EB2F165667C5L;
 
-  /// Returns the signed 64-bit hash value used by the 64-bit CPython runtime contract.
   @Intrinsic
   public static long $hash$(Object value) {
     switch (value) {
@@ -47,6 +46,7 @@ public final class HashingIntrinsics {
       case String string -> { return hashString(string); }
       case PyTuple tuple -> { return hashTuple(tuple); }
       case PyList<?> _ -> { throw unhashable("list"); }
+      case PyDict<?,?> _ -> { throw unhashable("dict"); }
       case PyNone _ -> { return HASH_NONE; }
       case PyFunction function -> { return System.identityHashCode(function); }
       default -> throw new PyTypeError(
@@ -54,9 +54,8 @@ public final class HashingIntrinsics {
     }
   }
 
-  /// Allocation-free equivalent of {@link #hashBigInteger}, valid for every long.
   private static long hashLong(long value) {
-    // For Long.MIN_VALUE, -value overflows back to itself, which read as unsigned is 2**63.
+    // For Long.MIN_VALUE, -value overflows back to itself; unsigned remainder handles it.
     var magnitude = value < 0 ? -value : value;
     var hash = Long.remainderUnsigned(magnitude, HASH_MODULUS);
     if (value < 0) {
@@ -73,8 +72,7 @@ public final class HashingIntrinsics {
     return hash == -1L ? -2L : hash;
   }
 
-  /// CPython's `_Py_HashDouble`. Integral floats get the same hash as the equal int by
-  /// construction, so no special case is needed.
+  /// CPython's _Py_HashDouble. Integral floats have the same hash as equal integers.
   private static long hashDouble(double value) {
     if (Double.isNaN(value)) {
       return HASH_NAN;
