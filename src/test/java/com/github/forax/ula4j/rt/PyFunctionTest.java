@@ -14,6 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public final class PyFunctionTest {
 
+ private static PyTuple tuple(Object... args) {
+    return TupleIntrinsics.fromArray(args);
+  }
+
   @Nested
   public final class Call {
 
@@ -99,6 +103,57 @@ public final class PyFunctionTest {
 
       assertThrows(PyTypeError.class, first::call);
     }
+
+    @Test
+    public void callVarargsExposesRestTuple() {
+      var collect = (PyFunction) Compiler.run("""
+          def collect(first, *rest):
+              return rest
+          """).getGlobal("collect");
+
+      assertEquals(tuple(2L, 3L),
+          collect.call(1L, 2L, 3L));
+    }
+
+    @Test
+    public void callOnlyVarargsWithExtraArguments() {
+      var collect = (PyFunction) Compiler.run("""
+          def collect(*args):
+              return args
+          """).getGlobal("collect");
+
+      assertEquals(tuple(), collect.call());
+      assertEquals(tuple(1L, 2L),
+          collect.call(1L, 2L));
+    }
+
+    @Test
+    public void callRecursiveFunction() {
+      var factorial = (PyFunction) Compiler.run("""
+          def factorial(n):
+              if n == 0:
+                  return 1
+              return n * factorial(n - 1)
+          """).getGlobal("factorial");
+
+      assertEquals(120L, factorial.call(5L));
+    }
+
+    @Test
+    public void callClosuresCaptureIndependently() {
+      var makeAdder = (PyFunction) Compiler.run("""
+          def make_adder(n):
+              def add(x):
+                  return x + n
+              return add
+          """).getGlobal("make_adder");
+
+      var add5 = (PyFunction) makeAdder.call(5L);
+      var add10 = (PyFunction) makeAdder.call(10L);
+
+      assertEquals(8L, add5.call(3L));
+      assertEquals(13L, add10.call(3L));
+    }
   }
 
   @Nested
@@ -175,7 +230,7 @@ public final class PyFunctionTest {
           Object.class);
       MethodHandle mh = rest.createDirectMethodHandle(type);
 
-      assertEquals(TupleIntrinsics.fromArray(),
+      assertEquals(tuple(),
           (Object) mh.invokeExact((Object) 42L));
     }
 
@@ -190,7 +245,7 @@ public final class PyFunctionTest {
           Object.class, Object.class);
       MethodHandle mh = rest.createDirectMethodHandle(type);
 
-      assertEquals(TupleIntrinsics.fromArray(12L),
+      assertEquals(tuple(12L),
           (Object) mh.invokeExact((Object) 42L, (Object) 12L));
     }
 
@@ -205,7 +260,7 @@ public final class PyFunctionTest {
           Object.class, Object.class, Object.class);
       MethodHandle mh = rest.createDirectMethodHandle(type);
 
-      assertEquals(TupleIntrinsics.fromArray(12L, 5L),
+      assertEquals(tuple(12L, 5L),
           (Object) mh.invokeExact((Object) 42L, (Object) 12L, (Object) 5L));
     }
 
@@ -220,7 +275,7 @@ public final class PyFunctionTest {
           Object.class, Object.class, Object.class, Object.class);
       MethodHandle mh = rest.createDirectMethodHandle(type);
 
-      assertEquals(TupleIntrinsics.fromArray(12L, 5L, "A"),
+      assertEquals(tuple(12L, 5L, "A"),
           (Object) mh.invokeExact((Object) 42L, (Object) 12L, (Object) 5L, (Object) "A"));
     }
 
@@ -235,7 +290,7 @@ public final class PyFunctionTest {
           Object.class, Object.class, Object.class, Object.class, Object.class);
       MethodHandle mh = rest.createDirectMethodHandle(type);
 
-      assertEquals(TupleIntrinsics.fromArray(12L, 5L, "A", true),
+      assertEquals(tuple(12L, 5L, "A", true),
           (Object) mh.invokeExact((Object) 42L, (Object) 12L, (Object) 5L, (Object) "A", (Object) true));
     }
 
@@ -250,8 +305,66 @@ public final class PyFunctionTest {
           Object.class, Object.class, Object.class, Object.class, Object.class, Object.class);
       MethodHandle mh = rest.createDirectMethodHandle(type);
 
-      assertEquals(TupleIntrinsics.fromArray(12L, 5L, "A", true, BigInteger.valueOf(10)),
+      assertEquals(tuple(12L, 5L, "A", true, BigInteger.valueOf(10)),
           (Object) mh.invokeExact((Object) 42L, (Object) 12L, (Object) 5L, (Object) "A", (Object) true, (Object) BigInteger.valueOf(10)));
+    }
+
+    @Test
+    public void createDirectMHWithNoArguments() throws Throwable {
+      var answer = (PyFunction) Compiler.run("""
+          def answer():
+              return 42
+          """).getGlobal("answer");
+
+      var type = MethodType.methodType(Object.class);
+      MethodHandle mh = answer.createDirectMethodHandle(type);
+
+      assertEquals(42L, (Object) mh.invokeExact());
+    }
+
+    @Test
+    public void createDirectMHWithMultipleFixedArguments() throws Throwable {
+      var sub = (PyFunction) Compiler.run("""
+          def sub(a, b):
+              return a - b
+          """).getGlobal("sub");
+
+      var type = MethodType.methodType(
+          Object.class, Object.class, Object.class);
+      MethodHandle mh = sub.createDirectMethodHandle(type);
+
+      assertEquals(7L, (Object) mh.invokeExact((Object) 10L, (Object) 3L));
+    }
+
+    @Test
+    public void createDirectMHWithRestAndNoFixedArguments() throws Throwable {
+      var rest = (PyFunction) Compiler.run("""
+          def rest(*args):
+              return args
+          """).getGlobal("rest");
+
+      var emptyType = MethodType.methodType(Object.class);
+      MethodHandle empty = rest.createDirectMethodHandle(emptyType);
+      assertEquals(tuple(), (Object) empty.invokeExact());
+
+      var twoArgType = MethodType.methodType(
+          Object.class, Object.class, Object.class);
+      MethodHandle twoArgs = rest.createDirectMethodHandle(twoArgType);
+      assertEquals(tuple(12L, 5L),
+          (Object) twoArgs.invokeExact((Object) 12L, (Object) 5L));
+    }
+
+    @Test
+    public void createDirectMHWithPrimitiveArgumentsAndReturn() throws Throwable {
+      var add = (PyFunction) Compiler.run("""
+          def add(a, b):
+              return a + b
+          """).getGlobal("add");
+
+      var type = MethodType.methodType(long.class, long.class, long.class);
+      MethodHandle mh = add.createDirectMethodHandle(type);
+
+      assertEquals(5L, (long) mh.invokeExact(2L, 3L));
     }
   }
 }
