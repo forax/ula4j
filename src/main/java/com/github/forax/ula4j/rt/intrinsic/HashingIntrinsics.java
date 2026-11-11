@@ -45,8 +45,8 @@ public final class HashingIntrinsics {
       case Double floating -> { return hashDouble(floating); }
       case String string -> { return hashString(string); }
       case PyTuple tuple -> { return hashTuple(tuple); }
-      case PyList<?> _ -> { throw unhashable("list"); }
-      case PyDict<?,?> _ -> { throw unhashable("dict"); }
+      case PyList<?> _ -> throw unhashable("list");
+      case PyDict<?,?> _ -> throw unhashable("dict");
       case PyNone _ -> { return HASH_NONE; }
       case PyFunction function -> { return System.identityHashCode(function); }
       default -> throw new PyTypeError(

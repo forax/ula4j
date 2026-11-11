@@ -225,7 +225,7 @@ public final class StringIntrinsics {
     }
   }
 
-  private static String dictRepr(PyDict dict) {
+  private static String dictRepr(PyDict<?,?> dict) {
     if (!enterRepr(dict)) {
       return "{...}";
     }

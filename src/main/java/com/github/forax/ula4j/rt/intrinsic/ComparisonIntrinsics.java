@@ -53,8 +53,8 @@ public final class ComparisonIntrinsics {
           default -> { return numericEquals(left, right); }
         }
       }
-      case BigInteger _ -> { return numericEquals(left, right); }
-      case Boolean _ -> { return numericEquals(left, right); }
+      case BigInteger _,
+           Boolean _ -> { return numericEquals(left, right); }
       case String l -> {
         switch (right) {
           case String r -> { return l.equals(r); }
@@ -74,9 +74,9 @@ public final class ComparisonIntrinsics {
           default -> { return false; }
         }
       }
-      case PyDict l -> {
+      case PyDict<?,?> l -> {
         switch (right) {
-          case PyDict r -> { return DictIntrinsics.equals(l, r); }
+          case PyDict<?,?> r -> { return DictIntrinsics.equals(l, r); }
           default -> { return false; }
         }
       }

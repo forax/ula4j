@@ -3,7 +3,6 @@ package com.github.forax.ula4j.rt.intrinsic;
 import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.error.PyKeyError;
-import com.github.forax.ula4j.rt.error.PyTypeError;
 
 /// Python dictionary operations. Storage mechanics live in [PyDict].
 public final class DictIntrinsics {
@@ -29,7 +28,7 @@ public final class DictIntrinsics {
 
   /** Python {@code dict[key] = value}; returns Python None. */
   @Intrinsic
-  public static <K,V> Object $set$(PyDict<Object,? super V> dict, Object key, V value) {
+  public static <V> Object $set$(PyDict<Object,? super V> dict, Object key, V value) {
     dict.put(key, value);
     return PyNone.INSTANCE;
   }
@@ -75,20 +74,11 @@ public final class DictIntrinsics {
     return true;
   }
 
-  /** Key lookup uses identity before rich equality, as Python dictionaries do. */
-  private static boolean sameKey(Object left, Object right) {
-    return left == right || ComparisonIntrinsics.$eq$(left, right);
-  }
-
   private static boolean sameValue(Object left, Object right) {
     return left == right || ComparisonIntrinsics.$eq$(left, right);
   }
 
   private static PyKeyError missingKey(Object key) {
     return new PyKeyError(StringIntrinsics.$repr$(key));
-  }
-
-  private static PyTypeError notSubscriptable(Object receiver) {
-    return new PyTypeError("'" + IntrinsicSupport.typeName(receiver) + "' object is not subscriptable");
   }
 }

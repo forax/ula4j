@@ -442,7 +442,7 @@ public final class ArithmeticIntrinsics {
     return switch (sequence) {
       case String s -> repeatString(s, times);
       case PyTuple t -> repeatTuple(t, times);
-      case PyList l -> ListIntrinsics.$repeat$(l, times);
+      case PyList<?> l -> ListIntrinsics.$repeat$(l, times);
       default -> throw new AssertionError("not a sequence: " + sequence);
     };
   }

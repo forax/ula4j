@@ -80,7 +80,7 @@ public final class IntrinsicSupport {
       case PyNone _ -> "NoneType";
       case PyTuple _ -> "tuple";
       case PyList<?> _ -> "list";
-      case PyDict _ -> "dict";
+      case PyDict<?,?> _ -> "dict";
       case PyFunction _ -> "function";
       default -> throw new UnimplementedFeatureError("type name of " + value.getClass().getName());
     };
