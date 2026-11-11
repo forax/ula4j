@@ -86,7 +86,7 @@ final class FunctionSupport {
   /// A call site `(Object callee, Object arg0, ..., Object argN-1) -> Object`.
   /// Each site owns a bounded chain of guards on the entry of the callee.
   static final class FunctionCallSite extends MutableCallSite {
-    private static final class Megamorphic {
+    static final class Megamorphic {
       private Megamorphic() {
         throw new AssertionError();
       }
@@ -174,15 +174,42 @@ final class FunctionSupport {
         throw new AssertionError();
       }
 
-      private static final MethodHandle FROM_ARRAY;
+      private static final PyTuple TUPLE_EMPTY = TupleIntrinsics.fromArray();
+      private static final MethodHandle TUPLE1, TUPLE2, TUPLE3, TUPLE4, TUPLE_N;
+
       static {
         var lookup = MethodHandles.lookup();
         try {
-          FROM_ARRAY = lookup.findStatic(TupleIntrinsics.class, "fromArray",
-              MethodType.methodType(PyTuple.class, Object[].class)).asFixedArity();
+          // collectArguments requires the filter's return type to be exactly the target parameter type (PyTuple),
+          // hence the asType that widens PyTupleK to PyTuple
+          TUPLE1 = lookup.findConstructor((Class<?>) PyTuple.PyTuple1.class, MethodType.methodType(void.class, Object.class))
+              .asType(MethodType.methodType(PyTuple.class, Object.class));
+          TUPLE2 = lookup.findConstructor((Class<?>) PyTuple.PyTuple2.class, MethodType.methodType(void.class, Object.class, Object.class))
+              .asType(MethodType.methodType(PyTuple.class, Object.class, Object.class));
+          TUPLE3 = lookup.findConstructor((Class<?>) PyTuple.PyTuple3.class, MethodType.methodType(void.class, Object.class, Object.class, Object.class))
+              .asType(MethodType.methodType(PyTuple.class, Object.class, Object.class, Object.class));
+          TUPLE4 = lookup.findConstructor((Class<?>) PyTuple.PyTuple4.class, MethodType.methodType(void.class, Object.class, Object.class, Object.class, Object.class))
+              .asType(MethodType.methodType(PyTuple.class, Object.class, Object.class, Object.class, Object.class));
+          TUPLE_N = lookup.findConstructor(PyTuple.PyTupleN.class, MethodType.methodType(void.class, Object[].class))
+              .asType(MethodType.methodType(PyTuple.class, Object[].class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
         }
+      }
+
+      /// `entry` is `(PyFunction, Object x arity, PyTuple rest) -> Object`.
+      /// The rest parameter is at `arity + 1`.
+      static MethodHandle adapt(MethodHandle entry, int arity, int restCount) {
+        var position = arity + 1;
+        return switch (restCount) {
+          case 0 -> MethodHandles.insertArguments(entry, position, TUPLE_EMPTY);
+          case 1 -> MethodHandles.collectArguments(entry, position, TUPLE1);
+          case 2 -> MethodHandles.collectArguments(entry, position, TUPLE2);
+          case 3 -> MethodHandles.collectArguments(entry, position, TUPLE3);
+          case 4 -> MethodHandles.collectArguments(entry, position, TUPLE4);
+          default -> MethodHandles.collectArguments(entry, position,
+              TUPLE_N.asCollector(Object[].class, restCount));
+        };
       }
     }
 
@@ -339,7 +366,7 @@ final class FunctionSupport {
       throw new PyTypeError("'" + IntrinsicSupport.typeName(callee) + "' object is not callable");
     }
 
-    private static void checkArity(PyFunction function, int argc) {
+     static void checkArity(PyFunction function, int argc) {
       var arity = function.arity();
       if (function.code.isVariadic()) {
         if (argc < arity) {
@@ -351,13 +378,12 @@ final class FunctionSupport {
     }
 
     /// Adapts the entry to `(PyFunction, Object x argc) -> Object`.
-    private static MethodHandle adapt(PyFunction function, MethodHandle entry, int argc) {
+    static MethodHandle adapt(PyFunction function, MethodHandle entry, int argc) {
       if (!function.code.hasRestParameter()) {
         return entry;  // exact arity: no adaptation at all
       }
       var arity = function.arity();
-      var packer = RestAdapter.FROM_ARRAY.asCollector(Object[].class, argc - arity);  // (Object x extra) -> PyTuple
-      return MethodHandles.collectArguments(entry, arity + 1, packer);
+      return RestAdapter.adapt(entry, arity, argc - arity);
     }
 
     private static PyTypeError arityError(PyFunction function, int given) {
