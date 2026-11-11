@@ -1568,7 +1568,6 @@ public final class BytecodeGeneratorTest {
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x[1:2]"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x.m()"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = (1, 2)"));
-      assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = []"));
     }
 
     @Test

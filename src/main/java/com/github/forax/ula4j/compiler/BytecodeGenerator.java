@@ -37,13 +37,14 @@ import static org.objectweb.asm.Opcodes.*;
 public final class BytecodeGenerator {
   private BytecodeGenerator() { throw new AssertionError(); }
 
-  private static final int MAX_PARAMETERS = 254;
+  private static final int MAX_PARAMETERS = 254;           // JVM and MethodHandle limit
   private static final int MAX_CALL_ARGUMENTS = MAX_PARAMETERS - 1;
-  private static final int LDC_CHUNK = 20_000;
+  private static final int LDC_CHUNK = 20_000;             // 3 bytes per char at most, 65535 bytes per constant
 
   private static final String GEN_PACKAGE = "com/github/forax/ula4j/gen/";
   private static final String RT = "com/github/forax/ula4j/rt/RT";
   private static final String PY_NONE = "com/github/forax/ula4j/rt/PyNone";
+  private static final String PY_LIST = "com/github/forax/ula4j/rt/PyList";
   private static final String PY_DICT = "com/github/forax/ula4j/rt/PyDict";
   private static final String INTRINSICS = "com/github/forax/ula4j/rt/intrinsic/";
   private static final String ARITHMETIC = INTRINSICS + "ArithmeticIntrinsics";
@@ -51,6 +52,7 @@ public final class BytecodeGenerator {
   private static final String TRUTHINESS = INTRINSICS + "TruthinessIntrinsics";
   private static final String CONTAINMENT = INTRINSICS + "ContainmentIntrinsics";
   private static final String ITERATION = INTRINSICS + "IteratorIntrinsics";
+  private static final String LIST = INTRINSICS + "ListIntrinsics";
   private static final String DICT = INTRINSICS + "DictIntrinsics";
 
   private static final String O = "Ljava/lang/Object;";
@@ -481,7 +483,7 @@ public final class BytecodeGenerator {
 
       mv.visitLabel(top);
       mv.visitVarInsn(ALOAD, iterator);
-      intrinsic(ITERATION, "$next$", UNARY);
+      intrinsic(ITERATION, "$next$", UNARY);  // Java null when exhausted
       mv.visitInsn(DUP);
       mv.visitJumpInsn(IFNULL, exhausted);
       storeTarget(s.target());
@@ -493,7 +495,7 @@ public final class BytecodeGenerator {
       mv.visitJumpInsn(GOTO, top);
 
       mv.visitLabel(exhausted);
-      mv.visitInsn(POP);
+      mv.visitInsn(POP);  // the null
       block(s.orElse());
       mv.visitLabel(end);
     }
@@ -685,9 +687,19 @@ public final class BytecodeGenerator {
           intrinsic(DICT, "$get$", BINARY);
         }
         case Expr.Slice s -> throw unsupported("slice", s.line(), s.column());
-        case Expr.ListDisplay d -> throw unsupported("list display", d.line(), d.column());
+        case Expr.ListDisplay d -> listDisplay(d);
         case Expr.TupleDisplay d -> throw unsupported("tuple display", d.line(), d.column());
         case Expr.DictDisplay d -> dictDisplay(d);
+      }
+    }
+
+    /// Create a fresh kist, then insert its items from left to right.
+    private void listDisplay(Expr.ListDisplay display) {
+      mv.visitMethodInsn(INVOKESTATIC, LIST, "newList", "()L" + PY_LIST + ";", false);
+      for (var element : display.elements()) {
+        mv.visitInsn(DUP);
+        expr(element);
+        intrinsic(DICT, "$set$", BINARY);
       }
     }
 

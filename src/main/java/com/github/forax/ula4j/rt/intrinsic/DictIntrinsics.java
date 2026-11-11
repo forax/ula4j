@@ -1,6 +1,7 @@
 package com.github.forax.ula4j.rt.intrinsic;
 
 import com.github.forax.ula4j.rt.PyDict;
+import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.error.PyKeyError;
 
@@ -8,6 +9,10 @@ import com.github.forax.ula4j.rt.error.PyKeyError;
 public final class DictIntrinsics {
   private DictIntrinsics() {
     throw new AssertionError("no instances");
+  }
+
+  public static <K, V> PyDict<K,V> newDict() {
+    return new PyDict<>();
   }
 
   /** Python {@code len(dict)}. */

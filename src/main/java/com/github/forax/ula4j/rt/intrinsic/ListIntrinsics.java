@@ -15,6 +15,10 @@ public final class ListIntrinsics {
     throw new AssertionError("no instances");
   }
 
+  public static <E> PyList<E> newList() {
+    return new PyList<>();
+  }
+
   /// Python len(list).
   @Intrinsic
   public static long $size$(PyList<?> list) {
