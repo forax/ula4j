@@ -82,7 +82,7 @@ public final class IntrinsicSupport {
       case PyList<?> _ -> "list";
       case PyDict<?,?> _ -> "dict";
       case PyFunction _ -> "function";
-      default -> throw new UnimplementedFeatureError("type name of " + value.getClass().getName());
+      default -> "java_type(" + value.getClass().getName() + ')';
     };
   }
 
