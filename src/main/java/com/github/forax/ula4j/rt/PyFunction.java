@@ -4,8 +4,11 @@ import com.github.forax.ula4j.ast.Stmt;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.List;
+import java.util.Objects;
 
 import static java.util.Objects.requireNonNull;
 
@@ -86,5 +89,37 @@ public final class PyFunction {
   @Override
   public String toString() {
     return "<function " + code.name + ">";
+  }
+
+  public Object call(Object... args) {
+    try {
+      return FunctionSupport.FunctionCallSite.Megamorphic.megamorphic(this, args);
+    } catch (RuntimeException | Error e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new UndeclaredThrowableException(e);
+    }
+  }
+
+  public MethodHandle createDirectMethodHandle(MethodType type) {
+    Objects.requireNonNull(type);
+
+    // 1. If wrong arity
+    var argc = type.parameterCount() - 1;
+    FunctionSupport.FunctionCallSite.checkArity(this, argc);
+
+    // 2. Get compiled entry
+    var compiledEntry = FunctionSupport.FunctionCallSite.getCompiledEntry(code);
+
+    // 3. Bind captured arguments and this
+    var boundValues = new Object[capturedArgs.length + 1];
+    System.arraycopy(capturedArgs, 0, boundValues, 0, capturedArgs.length);
+    boundValues[capturedArgs.length] = this;
+    var bound = MethodHandles.insertArguments(compiledEntry, 0, boundValues)
+        .withVarargs(compiledEntry.isVarargsCollector());  // if builtin
+
+    // 4. Adapt to callsite: entry: (args...) -> Object
+    return FunctionSupport.FunctionCallSite.adapt(this, bound, argc)
+        .asType(type);
   }
 }
