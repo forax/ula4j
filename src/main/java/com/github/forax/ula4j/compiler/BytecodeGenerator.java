@@ -54,6 +54,7 @@ public final class BytecodeGenerator {
   private static final String ITERATION = INTRINSICS + "IteratorIntrinsics";
   private static final String LIST = INTRINSICS + "ListIntrinsics";
   private static final String DICT = INTRINSICS + "DictIntrinsics";
+  private static final String ITEM = INTRINSICS + "ItemIntrinsics";
 
   private static final String O = "Ljava/lang/Object;";
   private static final String UNARY = "(" + O + ")" + O;
@@ -335,7 +336,7 @@ public final class BytecodeGenerator {
       expr(target.value());
       expr(target.index());
       mv.visitVarInsn(ALOAD, value);
-      intrinsic(DICT, "$set$", TRINARY);
+      intrinsic(ITEM, "$setItem$", TRINARY);
       mv.visitInsn(POP);
     }
 
@@ -386,7 +387,7 @@ public final class BytecodeGenerator {
       for (var target : s.targets()) {
         expr(target.value());
         expr(target.index());
-        intrinsic(DICT, "$delete$", BINARY);
+        intrinsic(ITEM, "$deleteItem$", BINARY);
         mv.visitInsn(POP);
       }
     }
@@ -417,7 +418,7 @@ public final class BytecodeGenerator {
 
       mv.visitVarInsn(ALOAD, container);
       mv.visitVarInsn(ALOAD, index);
-      intrinsic(DICT, "$get$", BINARY);
+      intrinsic(ITEM, "$getItem$", BINARY);
       expr(statement.value());
       intrinsic(ARITHMETIC, augmentedName(statement.op()), BINARY);
       mv.visitVarInsn(ASTORE, value);
@@ -425,7 +426,7 @@ public final class BytecodeGenerator {
       mv.visitVarInsn(ALOAD, container);
       mv.visitVarInsn(ALOAD, index);
       mv.visitVarInsn(ALOAD, value);
-      intrinsic(DICT, "$set$", TRINARY);
+      intrinsic(ITEM, "$setItem$", TRINARY);
       mv.visitInsn(POP);
     }
 
@@ -467,8 +468,8 @@ public final class BytecodeGenerator {
     }
 
     private void forStmt(Stmt.For s) {
-      if (!(s.target() instanceof Target.NameTarget)) {
-        storeTarget(s.target());  // raises the diagnostic
+      if (s.target() instanceof Target.TupleTarget t) {
+        throw unsupported("tuple unpacking", t.line(), t.column());
       }
       var iterator = allocate();
       expr(s.iter());
@@ -684,7 +685,7 @@ public final class BytecodeGenerator {
         case Expr.Subscript s -> {
           expr(s.value());
           expr(s.index());
-          intrinsic(DICT, "$get$", BINARY);
+          intrinsic(ITEM, "$getItem$", BINARY);
         }
         case Expr.Slice s -> throw unsupported("slice", s.line(), s.column());
         case Expr.ListDisplay d -> listDisplay(d);
@@ -693,13 +694,13 @@ public final class BytecodeGenerator {
       }
     }
 
-    /// Create a fresh kist, then insert its items from left to right.
+    /// Create a fresh list, then insert its items from left to right.
     private void listDisplay(Expr.ListDisplay display) {
       mv.visitMethodInsn(INVOKESTATIC, LIST, "newList", "()L" + PY_LIST + ";", false);
       for (var element : display.elements()) {
         mv.visitInsn(DUP);
         expr(element);
-        intrinsic(DICT, "$set$", BINARY);
+        mv.visitMethodInsn(INVOKEVIRTUAL, PY_LIST, "append", "(" + O + ")V", false);
       }
     }
 
@@ -710,7 +711,7 @@ public final class BytecodeGenerator {
         mv.visitInsn(DUP);
         expr(entry.key());
         expr(entry.value());
-        intrinsic(DICT, "$set$", TRINARY);
+        mv.visitMethodInsn(INVOKEVIRTUAL, PY_DICT, "put", "(" + O + O + ")" + O, false);
         mv.visitInsn(POP);
       }
     }

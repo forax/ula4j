@@ -1,6 +1,11 @@
 package com.github.forax.ula4j.compiler;
 
 import com.github.forax.ula4j.ast.UnsupportedSyntaxException;
+import com.github.forax.ula4j.rt.PyDict;
+import com.github.forax.ula4j.rt.PyList;
+import com.github.forax.ula4j.rt.PyNone;
+import com.github.forax.ula4j.rt.error.PyIndexError;
+import com.github.forax.ula4j.rt.error.PyKeyError;
 import com.github.forax.ula4j.rt.error.PyNameError;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 import org.junit.jupiter.api.Nested;
@@ -9,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import java.math.BigInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public final class BytecodeGeneratorTest {
@@ -1547,6 +1554,171 @@ public final class BytecodeGeneratorTest {
       assertThrows(PyNameError.class, () -> Compiler.run(source));
     }
   }
+
+
+  @Nested
+  public final class ListLiteral {
+    @Test
+    public void emptyList() {
+      var list = (PyList<?>) eval("x = []", "x");
+      assertEquals(0, list.size());
+    }
+
+    @Test
+    public void listWithElements() {
+      var list = (PyList<?>) eval("x = [1, 2, 3]", "x");
+      assertEquals(3, list.size());
+      assertEquals(1L, list.get(0));
+      assertEquals(2L, list.get(1));
+      assertEquals(3L, list.get(2));
+    }
+
+    @Test
+    public void nestedList() {
+      var list = (PyList<?>) eval("x = [[1, 2], [3, 4]]", "x");
+      assertEquals(2, list.size());
+      var sub0 = (PyList<?>) list.getFirst();
+      var sub1 = (PyList<?>) list.getLast();
+      assertEquals(1L, sub0.getFirst());
+      assertEquals(4L, sub1.getLast());
+    }
+
+    @Test
+    public void mixedTypes() {
+      var list = (PyList<?>) eval("x = [1, 'a', True, None]", "x");
+      assertEquals(1L, list.get(0));
+      assertEquals("a", list.get(1));
+      assertEquals(Boolean.TRUE, list.get(2));
+      assertEquals(PyNone.INSTANCE, list.get(3));
+    }
+  }
+
+
+  @Nested
+  public final class ListIndexing {
+    @Test
+    public void positiveIndex() {
+      assertEquals(2L, eval("x = [1, 2, 3]; y = x[1]", "y"));
+    }
+
+    @Test
+    public void negativeIndex() {
+      assertEquals(3L, eval("x = [1, 2, 3]; y = x[-1]", "y"));
+    }
+
+    @Test
+    public void outOfBounds() {
+      assertThrows(PyIndexError.class,
+          () -> eval("x = [1]; y = x[2]", "y"));
+    }
+  }
+
+
+  @Nested
+  public final class ListAssignment {
+    @Test
+    public void setElement() {
+      var list = (PyList<?>) eval("x = [1, 2, 3]; x[1] = 4", "x");
+      assertEquals(1L, list.get(0));
+      assertEquals(4L, list.get(1));
+      assertEquals(3L, list.get(2));
+    }
+
+    @Test
+    public void setNegativeIndex() {
+      var list = (PyList<?>) eval("x = [1, 2, 3]; x[-1] = 9", "x");
+      assertEquals(9L, list.get(2));
+    }
+  }
+
+  @Nested
+  public final class ListDeletion {
+    @Test
+    public void deleteKey() {
+      var list = (PyList<?>) eval("x = [1, 2, 3]; del x[1]", "x");
+      assertEquals(2, list.size());
+      assertEquals(1L, list.get(0));
+      assertEquals(3L, list.get(1));
+    }
+  }
+
+
+  @Nested
+  public final class DictLiteral {
+    @Test
+    public void emptyDict() {
+      var dict = (PyDict<?, ?>) eval("x = {}", "x");
+      assertEquals(0, dict.size());
+    }
+
+    @Test
+    public void dictWithEntries() {
+      var dict = (PyDict<?, ?>) eval("x = {'a': 1, 'b': 2}", "x");
+      assertEquals(2, dict.size());
+      assertEquals(1L, dict.get("a"));
+      assertEquals(2L, dict.get("b"));
+    }
+
+    @Test
+    public void nestedDict() {
+      var dict = (PyDict<?, ?>) eval("x = {'a': {'b': 2}}", "x");
+      var inner = (PyDict<?, ?>) dict.get("a");
+      assertNotNull(inner);
+      assertEquals(2L, inner.get("b"));
+    }
+
+    @Test
+    public void mixedKeyTypes() {
+      var dict = (PyDict<?, ?>) eval("x = {1: 'a', 'b': 2}", "x");
+      assertEquals("a", dict.get(1L));
+      assertEquals(2L, dict.get("b"));
+    }
+  }
+
+
+  @Nested
+  public final class DictIndexing {
+    @Test
+    public void getExistingKey() {
+      assertEquals(1L, eval("x = {'a': 1}; y = x['a']", "y"));
+    }
+
+    @Test
+    public void missingKey() {
+      assertThrows(PyKeyError.class,
+          () -> eval("x = {}; y = x['a']", "y"));
+    }
+  }
+
+
+  @Nested
+  public final class DictAssignment {
+    @Test
+    public void setNewKey() {
+      var dict = (PyDict<?, ?>) eval("x = {'a': 1}; x['b'] = 2", "x");
+      assertEquals(2, dict.size());
+      assertEquals(2L, dict.get("b"));
+    }
+
+    @Test
+    public void overwriteKey() {
+      var dict = (PyDict<?, ?>) eval("x = {'a': 1}; x['a'] = 9", "x");
+      assertEquals(1, dict.size());
+      assertEquals(9L, dict.get("a"));
+    }
+  }
+
+
+  @Nested
+  public final class DictDeletion {
+    @Test
+    public void deleteKey() {
+      var dict = (PyDict<?, ?>) eval("x = {'a': 1, 'b': 2}; del x['a']", "x");
+      assertEquals(1, dict.size());
+      assertFalse(dict.containsKey("a"));
+    }
+  }
+
 
 
   @Nested
