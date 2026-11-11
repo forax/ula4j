@@ -1,15 +1,18 @@
 package com.github.forax.ula4j.rt;
 
 import com.github.forax.ula4j.ast.Stmt;
+import com.github.forax.ula4j.rt.error.PyBaseException;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
+import java.lang.invoke.WrongMethodTypeException;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.List;
 import java.util.Objects;
 
+import static com.github.forax.ula4j.rt.FunctionSupport.FunctionCallSite.joinNames;
 import static java.util.Objects.requireNonNull;
 
 /// A Python function. `entry` has the type `(PyFunction, Object x arity [, PyTuple rest]) -> Object`,
@@ -91,7 +94,30 @@ public final class PyFunction {
     return "<function " + code.name + ">";
   }
 
+  /// Invokes this Python function with the given positional arguments.
+  ///
+  /// The arguments are passed positionally, in declaration order. For a
+  /// function that declares a variadic parameter (`*args`), any arguments
+  /// beyond the fixed parameters are packed into an immutable [PyTuple]
+  /// bound to the variadic name.
+  ///
+  /// Argument-count mismatches are reported at call time: passing too few
+  /// arguments for the fixed parameters, or any extra argument to a non-variadic
+  /// function, raises a Python-level error. If you want the arity checked before
+  /// any call is made, use [#createDirectMethodHandle(MethodType)] instead.
+  ///
+  /// @param args the positional arguments to bind to the function's parameters;
+  ///             may be empty for a zero-argument function, but must not be
+  ///             `null`
+  ///
+  /// @return the value of return statement executed by the function body;
+  ///         `None` if the function returns without an explicit value
+  /// @throws NullPointerException if `args` is `null`
+  /// @throws PyBaseException if the function body raises a Python error
+  /// @throws UndeclaredThrowableException if the function body
+  ///         raises a Java checked exception
   public Object call(Object... args) {
+    Objects.requireNonNull(args);
     try {
       return FunctionSupport.FunctionCallSite.Megamorphic.megamorphic(this, args);
     } catch (RuntimeException | Error e) {
@@ -101,6 +127,32 @@ public final class PyFunction {
     }
   }
 
+  /// Creates a [MethodHandle] that invokes this Python function directly,
+  /// bypassing any dispatch mechanism.
+  ///
+  /// The returned handle conforms exactly to `type`. Parameters are bound
+  /// positionally to the function's fixed parameters; if the function declares a
+  /// variadic parameter, arguments beyond the fixed ones are packed into an
+  /// immutable [PyTuple] in the same way as [#call(Object...)].
+  ///
+  /// Captured closure variables are bound into the handle, so a handle obtained
+  /// from a particular closure instance invokes only that instance.
+  ///
+  /// The arity of `type` is validated eagerly: for a non-variadic
+  /// function it must equal the number of declared parameters, and for a
+  /// variadic function it must be at least the number of fixed parameters.
+  /// A handle returned from this method is therefore guaranteed to accept
+  /// `type`.
+  ///
+  /// Argument and return values are adapted to the types expected by the
+  /// function using [MethodHandle#asType(MethodType)].
+  ///
+  /// @param type the method type the returned handle must conform to
+  /// @return a method handle that invokes this function
+  /// @throws NullPointerException if `type` is `null`
+  /// @throws WrongMethodTypeException if the arity of `type` is
+  ///         incompatible with this function's declared parameters
+  ///         or [MethodHandle#asType(MethodType)] fails
   public MethodHandle createDirectMethodHandle(MethodType type) {
     Objects.requireNonNull(type);
 
@@ -122,5 +174,28 @@ public final class PyFunction {
     var arity = arity();
     return FunctionSupport.FunctionCallSite.adapt(this, bound, arity, argCount - arity)
         .asType(type);
+  }
+
+  /// This method duplicates [FunctionSupport.FunctionCallSite#checkArity] but with WrongMethodTypeException
+  static void checkArity(PyFunction function, int argCount) {
+    var arity = function.arity();
+    if (function.code.isVariadic()) {
+      if (argCount < arity) {
+        throw arityError(function, argCount);
+      }
+    } else if (argCount != arity) {
+      throw arityError(function, argCount);
+    }
+  }
+
+  private static WrongMethodTypeException arityError(PyFunction function, int given) {
+    var arity = function.arity();
+    if (given < arity) {
+      var missing = function.parameters().subList(given, arity);
+      return new WrongMethodTypeException(function.name() + "() missing " + missing.size()
+          + " required positional argument" + (missing.size() == 1 ? "" : "s") + ": " + joinNames(missing));
+    }
+    return new WrongMethodTypeException(function.name() + "() takes " + arity + " positional argument"
+        + (arity == 1 ? "" : "s") + " but " + given + (given == 1 ? " was" : " were") + " given");
   }
 }

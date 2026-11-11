@@ -366,6 +366,7 @@ final class FunctionSupport {
       throw new PyTypeError("'" + IntrinsicSupport.typeName(callee) + "' object is not callable");
     }
 
+    /// This method is duplicated in [PyFunction#checkArity]
      static void checkArity(PyFunction function, int argCount) {
       var arity = function.arity();
       if (function.code.isVariadic()) {
@@ -396,7 +397,7 @@ final class FunctionSupport {
           + (arity == 1 ? "" : "s") + " but " + given + (given == 1 ? " was" : " were") + " given");
     }
 
-    private static String joinNames(List<String> names) {
+    static String joinNames(List<String> names) {
       return switch (names.size()) {
         case 1 -> "'" + names.get(0) + "'";
         case 2 -> "'" + names.get(0) + "' and '" + names.get(1) + "'";
