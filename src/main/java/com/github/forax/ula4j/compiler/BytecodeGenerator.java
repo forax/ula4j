@@ -28,32 +28,35 @@ import java.util.Set;
 
 import static org.objectweb.asm.Opcodes.*;
 
-/// Turns the AST into class files: `Script_<n>` (static `__main__()`) and `Fn_<name>_<id>`
-/// (static `body(captures..., PyFunction self, params... [, PyTuple rest])`).
+/// Turns the AST into class files: Script (static __main__()) and Fn_<name>
+/// (static body(captures..., PyFunction self, params... [, PyTuple rest])).
 ///
-/// Everything dynamic is an `invokedynamic`. Intrinsics are linked with `RT.bsmSpecialize` using
-/// the descriptor of the intrinsic itself (a comparison returns a primitive `boolean`, which is
-/// directly consumed by the branch instructions).
+/// Everything dynamic is an invokedynamic. Intrinsics are linked with RT.bsmSpecialize using the
+/// descriptor of the intrinsic itself. A comparison returns a primitive boolean consumed directly
+/// by branch instructions.
 public final class BytecodeGenerator {
   private BytecodeGenerator() { throw new AssertionError(); }
 
-  private static final int MAX_PARAMETERS = 254;           // JVM and MethodHandle limit
+  private static final int MAX_PARAMETERS = 254;
   private static final int MAX_CALL_ARGUMENTS = MAX_PARAMETERS - 1;
-  private static final int LDC_CHUNK = 20_000;             // 3 bytes per char at most, 65535 bytes per constant
+  private static final int LDC_CHUNK = 20_000;
 
   private static final String GEN_PACKAGE = "com/github/forax/ula4j/gen/";
   private static final String RT = "com/github/forax/ula4j/rt/RT";
   private static final String PY_NONE = "com/github/forax/ula4j/rt/PyNone";
+  private static final String PY_DICT = "com/github/forax/ula4j/rt/PyDict";
   private static final String INTRINSICS = "com/github/forax/ula4j/rt/intrinsic/";
   private static final String ARITHMETIC = INTRINSICS + "ArithmeticIntrinsics";
   private static final String COMPARISON = INTRINSICS + "ComparisonIntrinsics";
   private static final String TRUTHINESS = INTRINSICS + "TruthinessIntrinsics";
   private static final String CONTAINMENT = INTRINSICS + "ContainmentIntrinsics";
   private static final String ITERATION = INTRINSICS + "IteratorIntrinsics";
+  private static final String DICT = INTRINSICS + "DictIntrinsics";
 
   private static final String O = "Ljava/lang/Object;";
   private static final String UNARY = "(" + O + ")" + O;
   private static final String BINARY = "(" + O + O + ")" + O;
+  private static final String TRINARY = "(" + O + O + O + ")" + O;
   private static final String UNARY_BOOL = "(" + O + ")Z";
   private static final String BINARY_BOOL = "(" + O + O + ")Z";
 
@@ -86,13 +89,13 @@ public final class BytecodeGenerator {
     return GEN_PACKAGE + "Fn_" + sanitized;
   }
 
-  /// The variables a function receives through `insertArguments`, in `freeVariables` order.
+  /// Variables a function receives through `insertArguments`, in `freeVariables` order.
   /// A nested function reaches its own name through `self`, so that name is not captured.
   public static List<String> captureNames(Stmt.FunctionDef def, FunctionAnalysis analysis) {
     return analysis.freeVariables().stream().filter(name -> !name.equals(def.name())).toList();
   }
 
-  /// `(Object x captures, PyFunction self, Object x arity [, PyTuple rest]) -> Object`
+  /// (Object x captures, PyFunction self, Object x arity [, PyTuple rest]) -> Object
   public static MethodType bodyType(int captures, int arity, boolean varargs) {
     var types = new ArrayList<Class<?>>();
     for (var i = 0; i < captures; i++) {
@@ -115,7 +118,7 @@ public final class BytecodeGenerator {
     var cw = newClassWriter(internalName);
     var mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "__main__", "()V", null, null);
     mv.visitCode();
-    var emitter = new Emitter(mv, ctx,  dictionary, null, Set.of());
+    var emitter = new Emitter(mv, ctx, dictionary, null, Set.of());
     emitter.block(script.body());
     mv.visitInsn(RETURN);
     mv.visitMaxs(0, 0);
@@ -124,7 +127,8 @@ public final class BytecodeGenerator {
     return cw.toByteArray();
   }
 
-  public static byte[] generateFunction(ModuleContext ctx, Dictionary dictionary, Stmt.FunctionDef def, FunctionScope scope) {
+  public static byte[] generateFunction(ModuleContext ctx, Dictionary dictionary,
+                                        Stmt.FunctionDef def, FunctionScope scope) {
     var analysis = scope.analysis();
     var captures = captureNames(def, analysis);
     var arity = def.parameters().size();
@@ -155,7 +159,7 @@ public final class BytecodeGenerator {
       }
     }
 
-    scope.childByDef().forEach((ctx::registerScope));
+    scope.childByDef().forEach(ctx::registerScope);
 
     emitter.block(def.body());
     mv.visitFieldInsn(GETSTATIC, PY_NONE, "INSTANCE", "L" + PY_NONE + ";");
@@ -317,9 +321,20 @@ public final class BytecodeGenerator {
     private void storeTarget(Target target) {
       switch (target) {
         case Target.NameTarget n -> storeName(n.id());
-        case Target.SubscriptTarget t -> throw unsupported("subscript assignment", t.line(), t.column());
+        case Target.SubscriptTarget t -> storeSubscriptTarget(t);
         case Target.TupleTarget t -> throw unsupported("tuple unpacking", t.line(), t.column());
       }
+    }
+
+    /// A chained assignment has already evaluated the RHS. Spill it while evaluating the target.
+    private void storeSubscriptTarget(Target.SubscriptTarget target) {
+      var value = allocate();
+      mv.visitVarInsn(ASTORE, value);
+      expr(target.value());
+      expr(target.index());
+      mv.visitVarInsn(ALOAD, value);
+      intrinsic(DICT, "$set$", TRINARY);
+      mv.visitInsn(POP);
     }
 
     // ------------------------------------------------------------------ statements
@@ -339,7 +354,7 @@ public final class BytecodeGenerator {
         }
         case Stmt.Assign s -> assign(s);
         case Stmt.AugAssign s -> augAssign(s);
-        case Stmt.Del s -> throw unsupported("del", s.line(), s.column());
+        case Stmt.Del s -> delete(s);
         case Stmt.Return s -> {
           expr(s.value());
           mv.visitInsn(ARETURN);
@@ -353,7 +368,7 @@ public final class BytecodeGenerator {
       }
     }
 
-    /// `a = b = value`: the value is evaluated once, then stored left to right.
+    /// a = b = value: evaluate the value once, then assign left to right.
     private void assign(Stmt.Assign s) {
       expr(s.value());
       var targets = s.targets();
@@ -365,6 +380,15 @@ public final class BytecodeGenerator {
       }
     }
 
+    private void delete(Stmt.Del s) {
+      for (var target : s.targets()) {
+        expr(target.value());
+        expr(target.index());
+        intrinsic(DICT, "$delete$", BINARY);
+        mv.visitInsn(POP);
+      }
+    }
+
     private void augAssign(Stmt.AugAssign s) {
       switch (s.target()) {
         case Target.NameTarget n -> {
@@ -373,9 +397,34 @@ public final class BytecodeGenerator {
           intrinsic(ARITHMETIC, augmentedName(s.op()), BINARY);
           storeName(n.id());
         }
-        case Target.SubscriptTarget t -> throw unsupported("subscript augmented assignment", t.line(), t.column());
+        case Target.SubscriptTarget t -> augAssignSubscript(t, s);
         case Target.TupleTarget t -> throw new AssertionError("augmented assign tuple target");
       }
+    }
+
+    /// Evaluate container and index once, then perform get, operation and set in Python order.
+    private void augAssignSubscript(Target.SubscriptTarget target, Stmt.AugAssign statement) {
+      var container = allocate();
+      var index = allocate();
+      var value = allocate();
+
+      expr(target.value());
+      mv.visitVarInsn(ASTORE, container);
+      expr(target.index());
+      mv.visitVarInsn(ASTORE, index);
+
+      mv.visitVarInsn(ALOAD, container);
+      mv.visitVarInsn(ALOAD, index);
+      intrinsic(DICT, "$get$", BINARY);
+      expr(statement.value());
+      intrinsic(ARITHMETIC, augmentedName(statement.op()), BINARY);
+      mv.visitVarInsn(ASTORE, value);
+
+      mv.visitVarInsn(ALOAD, container);
+      mv.visitVarInsn(ALOAD, index);
+      mv.visitVarInsn(ALOAD, value);
+      intrinsic(DICT, "$set$", TRINARY);
+      mv.visitInsn(POP);
     }
 
     private void ifStmt(Stmt.If s) {
@@ -393,8 +442,7 @@ public final class BytecodeGenerator {
       mv.visitLabel(end);
     }
 
-    /// `break` skips the else clause and jumps to `end`; the else clause belongs to the enclosing
-    /// context, so the enclosing break/continue targets are restored before it is emitted.
+    /// break skips the else clause; else belongs to the enclosing context.
     private void whileStmt(Stmt.While s) {
       var top = new Label();
       var orElse = new Label();
@@ -433,7 +481,7 @@ public final class BytecodeGenerator {
 
       mv.visitLabel(top);
       mv.visitVarInsn(ALOAD, iterator);
-      intrinsic(ITERATION, "$next$", UNARY);  // Java null when exhausted
+      intrinsic(ITERATION, "$next$", UNARY);
       mv.visitInsn(DUP);
       mv.visitJumpInsn(IFNULL, exhausted);
       storeTarget(s.target());
@@ -445,7 +493,7 @@ public final class BytecodeGenerator {
       mv.visitJumpInsn(GOTO, top);
 
       mv.visitLabel(exhausted);
-      mv.visitInsn(POP);  // the null
+      mv.visitInsn(POP);
       block(s.orElse());
       mv.visitLabel(end);
     }
@@ -459,13 +507,14 @@ public final class BytecodeGenerator {
       for (var capture : captures) {
         loadName(capture);
       }
-      mv.visitInvokeDynamicInsn(def.name(), "(" + O.repeat(captures.size()) + ")" + O, BSM_DEF, dictionary.register(def));
+      mv.visitInvokeDynamicInsn(def.name(), "(" + O.repeat(captures.size()) + ")" + O,
+          BSM_DEF, dictionary.register(def));
       storeName(def.name());
     }
 
     // ------------------------------------------------------------------ conditions
 
-    /// Evaluates `e` as a condition and jumps to `target` when its truthiness equals `jumpIf`.
+    /// Evaluate e as a condition and jump when its truthiness equals jumpIf.
     private void branch(Expr e, Label target, boolean jumpIf) {
       switch (e) {
         case Expr.Not n -> branch(n.operand(), target, !jumpIf);
@@ -500,7 +549,7 @@ public final class BytecodeGenerator {
       }
     }
 
-    /// Leaves an int (the primitive boolean returned by the intrinsic) on the stack.
+    /// Leaves the primitive boolean returned by the comparison intrinsic on the stack.
     private void compareOp(Expr.CompareOperator op) {
       switch (op) {
         case EQ -> intrinsic(COMPARISON, "$eq$", BINARY_BOOL);
@@ -518,7 +567,6 @@ public final class BytecodeGenerator {
       }
     }
 
-    /// A chain evaluates every intermediate operand once; a failed comparison short-circuits.
     private void compareBranch(Expr.Compare c, Label target, boolean jumpIf) {
       var ops = c.ops();
       if (ops.size() == 1) {
@@ -528,7 +576,7 @@ public final class BytecodeGenerator {
         mv.visitJumpInsn(jumpIf ? IFNE : IFEQ, target);
         return;
       }
-      var current = allocate();  // the left operand of the next comparison
+      var current = allocate();
       expr(c.first());
       mv.visitVarInsn(ASTORE, current);
       var skip = new Label();
@@ -571,7 +619,7 @@ public final class BytecodeGenerator {
       mv.visitLabel(end);
     }
 
-    /// `and` (IFEQ) and `or` (IFNE) return one of their operands.
+    /// and/or return one of their operands.
     private void shortCircuit(Expr left, Expr right, int jumpOpcode) {
       var end = new Label();
       expr(left);
@@ -590,7 +638,8 @@ public final class BytecodeGenerator {
       switch (e) {
         case Expr.Name n -> loadName(n.id());
         case Expr.Literal l -> literal(l.value());
-        case Expr.NoneLiteral _ -> mv.visitFieldInsn(GETSTATIC, PY_NONE, "INSTANCE", "L" + PY_NONE + ";");
+        case Expr.NoneLiteral _ ->
+            mv.visitFieldInsn(GETSTATIC, PY_NONE, "INSTANCE", "L" + PY_NONE + ";");
         case Expr.BinOp b -> {
           expr(b.left());
           expr(b.right());
@@ -630,11 +679,27 @@ public final class BytecodeGenerator {
           mv.visitInvokeDynamicInsn(callName, "(" + O.repeat(c.args().size() + 1) + ")" + O, BSM_CALL);
         }
         case Expr.MethodCall m -> throw unsupported("method call", m.line(), m.column());
-        case Expr.Subscript s -> throw unsupported("subscript", s.line(), s.column());
+        case Expr.Subscript s -> {
+          expr(s.value());
+          expr(s.index());
+          intrinsic(DICT, "$get$", BINARY);
+        }
         case Expr.Slice s -> throw unsupported("slice", s.line(), s.column());
         case Expr.ListDisplay d -> throw unsupported("list display", d.line(), d.column());
         case Expr.TupleDisplay d -> throw unsupported("tuple display", d.line(), d.column());
-        case Expr.DictDisplay d -> throw unsupported("dict display", d.line(), d.column());
+        case Expr.DictDisplay d -> dictDisplay(d);
+      }
+    }
+
+    /// Create a fresh dictionary, then insert its entries from left to right.
+    private void dictDisplay(Expr.DictDisplay display) {
+      mv.visitMethodInsn(INVOKESTATIC, DICT, "newDict", "()L" + PY_DICT + ";", false);
+      for (var entry : display.entries()) {
+        mv.visitInsn(DUP);
+        expr(entry.key());
+        expr(entry.value());
+        intrinsic(DICT, "$set$", TRINARY);
+        mv.visitInsn(POP);
       }
     }
 
@@ -653,8 +718,7 @@ public final class BytecodeGenerator {
       mv.visitLdcInsn(new ConstantDynamic("literal", descriptor, bootstrap, argument));
     }
 
-    /// Supplementary characters are fine in a constant (modified UTF-8 stores the surrogate pair);
-    /// only a constant longer than 65535 bytes has to be split.
+    /// Supplementary characters are fine in a constant; long constants must be split.
     private void pushString(String s) {
       if (utf8Length(s) <= 65535) {
         mv.visitLdcInsn(s);

@@ -1565,12 +1565,9 @@ public final class BytecodeGeneratorTest {
     @Test
     public void moreUnsupportedConstructs() {
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ndel x"));
-      assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x[0]"));
-      assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\nx[0] = 1"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x[1:2]"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x.m()"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = (1, 2)"));
-      assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = {1: 2}"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = []"));
     }
 
@@ -1594,9 +1591,7 @@ public final class BytecodeGeneratorTest {
     }
 
     @Test
-    public void unsupportedSubscriptAndTupleTargetsRemainRejected() {
-      assertThrows(UnsupportedSyntaxException.class,
-          () -> Compiler.run("value = 'abc'\nresult = value[0]"));
+    public void unsupportedTupleTargetsRemainRejected() {
       assertThrows(UnsupportedSyntaxException.class,
           () -> Compiler.run("first, second = 1, 2"));
     }
