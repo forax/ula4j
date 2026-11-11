@@ -197,10 +197,9 @@ final class FunctionSupport {
         }
       }
 
-      /// `entry` is `(PyFunction, Object x arity, PyTuple rest) -> Object`.
-      /// The rest parameter is at `arity + 1`.
-      static MethodHandle adapt(MethodHandle entry, int arity, int restCount) {
-        var position = arity + 1;
+      /// `entry` is `(X, Object x arity, PyTuple rest) -> Object`.
+      /// The rest parameter is at `position`.
+      static MethodHandle adapt(MethodHandle entry, int position, int restCount) {
         return switch (restCount) {
           case 0 -> MethodHandles.insertArguments(entry, position, TUPLE_EMPTY);
           case 1 -> MethodHandles.collectArguments(entry, position, TUPLE1);
@@ -252,12 +251,12 @@ final class FunctionSupport {
       var function = asFunction(callee);
 
       // 1. If wrong arity
-      var argc = type().parameterCount() - 1;
-      checkArity(function, argc);
+      var argCount = type().parameterCount() - 1;
+      checkArity(function, argCount);
 
       // 2. If megamorphic
       if (depth == MAX_DEPTH) {
-        var target = Megamorphic.MEGAMORPHIC.asCollector(Object[].class, argc);
+        var target = Megamorphic.MEGAMORPHIC.asCollector(Object[].class, argCount);
         root.setTarget(target);
         return target;
       }
@@ -275,7 +274,8 @@ final class FunctionSupport {
       }
 
       // 4. adapt to callsite: entry: (PyFunction self, args...) -> Object
-      var adapted = adapt(function, target, argc).asType(type());
+      var arity = function.arity();
+      var adapted = adapt(function, target, 1 + arity, argCount - arity).asType(type());
 
       // 5. Install the inlining cache
       var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
@@ -366,24 +366,23 @@ final class FunctionSupport {
       throw new PyTypeError("'" + IntrinsicSupport.typeName(callee) + "' object is not callable");
     }
 
-     static void checkArity(PyFunction function, int argc) {
+     static void checkArity(PyFunction function, int argCount) {
       var arity = function.arity();
       if (function.code.isVariadic()) {
-        if (argc < arity) {
-          throw arityError(function, argc);
+        if (argCount < arity) {
+          throw arityError(function, argCount);
         }
-      } else if (argc != arity) {
-        throw arityError(function, argc);
+      } else if (argCount != arity) {
+        throw arityError(function, argCount);
       }
     }
 
-    /// Adapts the entry to `(PyFunction, Object x argc) -> Object`.
-    static MethodHandle adapt(PyFunction function, MethodHandle entry, int argc) {
+    /// Adapts the entry to `(X, Object x argCount) -> Object`.
+    static MethodHandle adapt(PyFunction function, MethodHandle entry, int position, int restCount) {
       if (!function.code.hasRestParameter()) {
         return entry;  // exact arity: no adaptation at all
       }
-      var arity = function.arity();
-      return RestAdapter.adapt(entry, arity, argc - arity);
+      return RestAdapter.adapt(entry, position, restCount);
     }
 
     private static PyTypeError arityError(PyFunction function, int given) {

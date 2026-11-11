@@ -105,8 +105,8 @@ public final class PyFunction {
     Objects.requireNonNull(type);
 
     // 1. If wrong arity
-    var argc = type.parameterCount() - 1;
-    FunctionSupport.FunctionCallSite.checkArity(this, argc);
+    var argCount = type.parameterCount();
+    FunctionSupport.FunctionCallSite.checkArity(this, argCount);
 
     // 2. Get compiled entry
     var compiledEntry = FunctionSupport.FunctionCallSite.getCompiledEntry(code);
@@ -119,7 +119,8 @@ public final class PyFunction {
         .withVarargs(compiledEntry.isVarargsCollector());  // if builtin
 
     // 4. Adapt to callsite: entry: (args...) -> Object
-    return FunctionSupport.FunctionCallSite.adapt(this, bound, argc)
+    var arity = arity();
+    return FunctionSupport.FunctionCallSite.adapt(this, bound, arity, argCount - arity)
         .asType(type);
   }
 }
