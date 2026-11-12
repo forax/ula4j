@@ -81,7 +81,7 @@ public final class DictIntrinsicsTest {
 
       var result = DictIntrinsics.$delete$(dict, 1L);
       assertSame(PyNone.INSTANCE, result);
-      assertFalse(DictIntrinsics.containsKey(dict, 1L));
+      assertFalse(DictIntrinsics.$in$(dict, 1L));
     }
 
     @Test
@@ -98,8 +98,8 @@ public final class DictIntrinsicsTest {
     var dict = DictIntrinsics.newDict();
     dict.put(1L, "one");
 
-    assertTrue(DictIntrinsics.containsKey(dict, 1L));
-    assertFalse(DictIntrinsics.containsKey(dict, 2L));
+    assertTrue(DictIntrinsics.$in$(dict, 1L));
+    assertFalse(DictIntrinsics.$in$(dict, 2L));
   }
 
   @Nested

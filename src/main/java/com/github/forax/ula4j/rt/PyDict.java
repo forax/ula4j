@@ -189,13 +189,6 @@ public final class PyDict<K,V> extends AbstractMap<K,V> {
     return values[entryIndex];
   }
 
-  /// Returns the stored Python hash at a live insertion-order position.
-  public long hashAt(int entryIndex) {
-    Objects.checkIndex(entryIndex, entryCount);
-    return hashes[entryIndex];
-  }
-
-
   // -- Java API
 
   @Override
@@ -278,8 +271,7 @@ public final class PyDict<K,V> extends AbstractMap<K,V> {
         }
       } else {
         var entry = slot - 1;
-        var existingKey = keys[entry];
-        if (hashes[entry] == hash && (existingKey == key || ComparisonIntrinsics.$eq$(keys[entry], key))) {
+        if (hashes[entry] == hash && (ComparisonIntrinsics.$sameOrEq$(keys[entry], key))) {
           return index;
         }
       }

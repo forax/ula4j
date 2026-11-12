@@ -3,6 +3,7 @@ package com.github.forax.ula4j.rt.intrinsic;
 import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
+import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyKeyError;
 
 /// Python dictionary operations. Storage mechanics live in [PyDict].
@@ -49,7 +50,8 @@ public final class DictIntrinsics {
   }
 
   /** Python membership helper used by {@code ContainmentIntrinsics.$in$}. */
-  public static boolean containsKey(PyDict<?,?> dict, Object key) {
+  @Intrinsic
+  public static boolean $in$(PyDict<?,?> dict, Object key) {
     return dict.containsKey(key);
   }
 
@@ -72,15 +74,11 @@ public final class DictIntrinsics {
       var key = left.keyAt(i);
       var value = left.valueAt(i);
       var otherValue = right.get(key);
-      if (otherValue == null || !sameValue(value, otherValue)) {
+      if (otherValue == null || !ComparisonIntrinsics.$sameOrEq$(value, otherValue)) {
         return false;
       }
     }
     return true;
-  }
-
-  private static boolean sameValue(Object left, Object right) {
-    return left == right || ComparisonIntrinsics.$eq$(left, right);
   }
 
   private static PyKeyError missingKey(Object key) {

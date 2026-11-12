@@ -91,6 +91,11 @@ public final class ComparisonIntrinsics {
     return !$eq$(left, right);
   }
 
+  @Intrinsic
+  public static boolean $sameOrEq$(Object left, Object right) {
+    return left == right || $eq$(left, right);
+  }
+
   // -- ordering
 
   @Intrinsic
@@ -207,7 +212,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < size; i++) {
       Object a = left.get(i);
       Object b = right.get(i);
-      if (a != b && !$eq$(a, b)) {
+      if (!$sameOrEq$(a, b)) {
         return false;
       }
     }
@@ -265,7 +270,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < size; i++) {
       Object a = TupleIntrinsics.$get$(left, (long) i);
       Object b = TupleIntrinsics.$get$(right, (long) i);
-      if (a != b && !$eq$(a, b)) {  // reference shortcut
+      if (!$sameOrEq$(a, b)) {  // reference shortcut
         return false;
       }
     }
@@ -281,7 +286,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < common; i++) {
       Object a = TupleIntrinsics.$get$(left, (long) i);
       Object b = TupleIntrinsics.$get$(right, (long) i);
-      if (a != b && !$eq$(a, b)) {  // reference shortcut
+      if (!$sameOrEq$(a, b)) {
         return orderItems(a, b, op);
       }
     }
@@ -296,7 +301,7 @@ public final class ComparisonIntrinsics {
     for (var i = 0; i < common; i++) {
       Object a = left.get(i);
       Object b = right.get(i);
-      if (a != b && !$eq$(a, b)) {
+      if (!$sameOrEq$(a, b)) {
         return orderItems(a, b, op);
       }
     }

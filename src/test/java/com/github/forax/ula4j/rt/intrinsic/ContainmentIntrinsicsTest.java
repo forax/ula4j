@@ -46,9 +46,10 @@ public final class ContainmentIntrinsicsTest {
     }
 
     @Test
-    public void containsNaN() {
-      var tuple = TupleIntrinsics.fromArray(1L, Double.NaN);
-      assertTrue(ContainmentIntrinsics.$in$(Double.NaN, tuple));
+    public void containsSameNaN() {
+      var nan = (Object) Double.NaN;
+      var tuple = TupleIntrinsics.fromArray(1L, nan);
+      assertTrue(ContainmentIntrinsics.$in$(nan, tuple));
     }
   }
 
@@ -67,6 +68,13 @@ public final class ContainmentIntrinsicsTest {
     public void doesNotContainMissingElement() {
       var list = new PyList<>(1L, "a", 2.5, true);
       assertFalse(ContainmentIntrinsics.$in$(42L, list));
+    }
+
+    @Test
+    public void containsSameNaN() {
+      var nan = (Object) Double.NaN;
+      var list = new PyList<>(1L, nan);
+      assertTrue(ContainmentIntrinsics.$in$(nan, list));
     }
   }
 
@@ -89,6 +97,15 @@ public final class ContainmentIntrinsicsTest {
       dict.put("a", 2L);
 
       assertFalse(ContainmentIntrinsics.$in$(42L, dict));
+    }
+
+    @Test
+    public void containsSameNaN() {
+      var nan = (Object) Double.NaN;
+      var dict = new PyDict<>();
+      dict.put(1L, 1L);
+      dict.put(nan, 2L);
+      assertTrue(ContainmentIntrinsics.$in$(nan, dict));
     }
   }
 

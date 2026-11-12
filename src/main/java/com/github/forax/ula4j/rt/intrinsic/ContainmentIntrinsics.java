@@ -23,7 +23,7 @@ public final class ContainmentIntrinsics {
       }
       case PyTuple tuple -> { return TupleIntrinsics.$in$(tuple, item); }
       case PyList<?> list -> { return ListIntrinsics.$in$(list, item); }
-      case PyDict<?,?> dict -> { return DictIntrinsics.containsKey(dict, item); }
+      case PyDict<?,?> dict -> { return DictIntrinsics.$in$(dict, item); }
       default -> throw new PyTypeError("argument of type '" + typeName(container) + "' is not iterable");
     }
   }

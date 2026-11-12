@@ -143,37 +143,24 @@ public final class TupleIntrinsics {
 
   @Intrinsic
   public static boolean $in$(PyTuple tuple, Object item) {
-    switch (item) {
-      case Double d -> {
-        if (Double.isNaN(d)) {
-          return $tupleContainsNaN$(tuple);
-        }
-        return $tupleContains$(tuple, d);
-      }
-      default -> { return $tupleContains$(tuple, item); }
-    }
-  }
-
-  @Intrinsic
-  public static boolean $tupleContains$(PyTuple tuple, Object item) {
     switch (tuple) {
       case PyTuple1 t -> {
-        return ComparisonIntrinsics.$eq$(t.item0(), item);
+        return ComparisonIntrinsics.$sameOrEq$(t.item0(), item);
       }
       case PyTuple2 t -> {
-        return ComparisonIntrinsics.$eq$(t.item0(), item) ||
-            ComparisonIntrinsics.$eq$(t.item1(), item);
+        return ComparisonIntrinsics.$sameOrEq$(t.item0(), item) ||
+            ComparisonIntrinsics.$sameOrEq$(t.item1(), item);
       }
       case PyTuple3 t -> {
-        return ComparisonIntrinsics.$eq$(t.item0(), item) ||
-            ComparisonIntrinsics.$eq$(t.item1(), item) ||
-            ComparisonIntrinsics.$eq$(t.item2(), item);
+        return ComparisonIntrinsics.$sameOrEq$(t.item0(), item) ||
+            ComparisonIntrinsics.$sameOrEq$(t.item1(), item) ||
+            ComparisonIntrinsics.$sameOrEq$(t.item2(), item);
       }
       case PyTuple4 t -> {
-        return ComparisonIntrinsics.$eq$(t.item0(), item) ||
-            ComparisonIntrinsics.$eq$(t.item1(), item) ||
-            ComparisonIntrinsics.$eq$(t.item2(), item) ||
-            ComparisonIntrinsics.$eq$(t.item3(), item);
+        return ComparisonIntrinsics.$sameOrEq$(t.item0(), item) ||
+            ComparisonIntrinsics.$sameOrEq$(t.item1(), item) ||
+            ComparisonIntrinsics.$sameOrEq$(t.item2(), item) ||
+            ComparisonIntrinsics.$sameOrEq$(t.item3(), item);
       }
       case PyTupleN t -> {
         return tupleNContains(t, item);
@@ -184,45 +171,11 @@ public final class TupleIntrinsics {
   private static boolean tupleNContains(PyTupleN tuple, Object item) {
     for (var i = 0; i < tuple.itemCount(); i++) {
       var value = tuple.itemAt(i);
-      if (ComparisonIntrinsics.$eq$(value, item)) { // should be $eq$(item, value) ?
+      if (ComparisonIntrinsics.$sameOrEq$(value, item)) {
         return true;
       }
     }
     return false;
-  }
-
-  private static boolean $tupleContainsNaN$(PyTuple tuple) {
-    switch (tuple) {
-      case PyTuple1 t -> {
-        return isNaN(t.item0());
-      }
-      case PyTuple2 t -> {
-        return isNaN(t.item0()) || isNaN(t.item1());
-      }
-      case PyTuple3 t -> {
-        return isNaN(t.item0()) || isNaN(t.item1()) || isNaN(t.item2());
-      }
-      case PyTuple4 t -> {
-        return isNaN(t.item0()) || isNaN(t.item1()) || isNaN(t.item2()) || isNaN(t.item3());
-      }
-      case PyTupleN t -> {
-        return tupleNContainsNaN(t);
-      }
-    }
-  }
-
-  private static boolean tupleNContainsNaN(PyTupleN tuple) {
-    for (var i = 0; i < tuple.itemCount(); i++) {
-      var value = tuple.itemAt(i);
-      if (isNaN(value)) { // should be $eq$(item, value) ?
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isNaN(Object item) {
-    return item instanceof Double d && Double.isNaN(d);
   }
 
 
