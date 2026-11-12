@@ -95,7 +95,13 @@ public final class BytecodeGenerator {
   /// Variables a function receives through `insertArguments`, in `freeVariables` order.
   /// A nested function reaches its own name through `self`, so that name is not captured.
   public static List<String> captureNames(Stmt.FunctionDef def, FunctionAnalysis analysis) {
-    return analysis.freeVariables().stream().filter(name -> !name.equals(def.name())).toList();
+    var captureNames = new ArrayList<String>();
+    for (var name : analysis.freeVariables()) {
+      if (!name.equals(def.name())) {
+        captureNames.add(name);
+      }
+    }
+    return captureNames;
   }
 
   /// (Object x captures, PyFunction self, Object x arity [, PyTuple rest]) -> Object
