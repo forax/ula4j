@@ -52,7 +52,7 @@ public final class RT {
   }
 
   public static CallSite bsmCall(MethodHandles.Lookup lookup, String name, MethodType type, int positionalCount, String... keywordNames) {
-    return FunctionSupport.FunctionCallSite.call(type, positionalCount, List.of(keywordNames));
+    return FunctionSupport.FunctionCallSite.call(type, positionalCount, keywordNames);
   }
 
   public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {

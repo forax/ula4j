@@ -10,6 +10,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.UndeclaredThrowableException;
+import java.util.Objects;
 
 /// Facade: source -> AST -> `Script_<n>` class -> run `__main__`.
 public final class Compiler {
@@ -34,8 +35,15 @@ public final class Compiler {
 
   /// Runs a program and returns its module, whose globals can then be inspected.
   public static ModuleContext run(String source) {
+    Objects.requireNonNull(source);
+    var script = ASTBuilder.createScript(source);
+    return run(script);
+  }
+
+  public static ModuleContext run(Script script) {
+    Objects.requireNonNull(script);
     var ctx = new ModuleContext();
-    var main = compile(ctx, ASTBuilder.createScript(source));
+    var main = compile(ctx, script);
     try {
       main.invokeExact();
     } catch(RuntimeException | Error e) {
@@ -45,4 +53,6 @@ public final class Compiler {
     }
     return ctx;
   }
+
+
 }

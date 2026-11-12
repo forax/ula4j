@@ -13,6 +13,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -91,7 +92,7 @@ final class FunctionSupport {
         throw new AssertionError();
       }
 
-      static final MethodHandle MEGAMORPHIC;
+      static final MethodHandle MEGAMORPHIC, MEGAMORPHIC_WITH_KEYWORDS;
       private static final MethodHandle ARRAY_ELEMENT, REST_TUPLE;
       static {
         var lookup = MethodHandles.lookup();
@@ -99,6 +100,8 @@ final class FunctionSupport {
         try {
           MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
               MethodType.methodType(Object.class, Object.class, Object[].class));
+          MEGAMORPHIC_WITH_KEYWORDS =  lookup.findStatic(Megamorphic.class, "megamorphicWithKeywords",
+              MethodType.methodType(Object.class, Object.class, Object[].class, int.class, String[].class));
           REST_TUPLE = lookup.findStatic(Megamorphic.class, "restTuple",
               MethodType.methodType(PyTuple.class, Object[].class, int.class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
@@ -112,6 +115,76 @@ final class FunctionSupport {
         var thunkEntry = getThunkEntry(function);
         return thunkEntry.invokeExact(function.capturedArgs, function, args);
       }
+
+      static Object megamorphicWithKeywords(Object callee, Object[] args, int positionalCount, String[] keywordNames) throws Throwable {
+        var function = asFunction(callee);
+        var ordered = bindKeywordArguments(function, args, positionalCount, keywordNames);
+        var thunkEntry = getThunkEntry(function);
+        return thunkEntry.invokeExact(function.capturedArgs, function, ordered);
+      }
+
+      static Object[] bindKeywordArguments(PyFunction function, Object[] args, int positionalCount, String[] keywordNames) {
+        var keywordCount = keywordNames.length;
+        if (args.length != positionalCount + keywordCount) {
+          throw new IllegalArgumentException("inconsistent call arguments");
+        }
+
+        var parameters = function.parameters();
+        var arity = parameters.size();
+
+        // Builtins currently don't have explicit keyword signatures.
+        if (function.isBuiltin() && keywordCount != 0) {
+          throw unexpectedKeyword(function, keywordNames[0]);
+        }
+
+        // Too many positional arguments?
+        if (positionalCount > arity && !function.code.isVariadic()) {
+          throw tooManyPositional(function, positionalCount);
+        }
+
+        // Allocate canonical arguments, including the excess positional arguments
+        // that will eventually become *args.
+        var bound = new Object[Math.max(positionalCount, arity)];
+
+        // Copy positional arguments.
+        System.arraycopy(args, 0, bound, 0, positionalCount);
+
+        var assigned = new boolean[arity];
+        for (var i = 0; i < Math.min(positionalCount, arity); i++) {
+          assigned[i] = true;
+        }
+
+        // Bind keyword arguments.
+        for (var i = 0; i < keywordCount; i++) {
+          var name = keywordNames[i];
+          var index = parameters.indexOf(name);
+          if (index < 0) {
+            throw unexpectedKeyword(function, name);
+          }
+          if (assigned[index]) {
+            throw multipleValues(function, name);
+          }
+          bound[index] = args[positionalCount + i];
+          assigned[index] = true;
+        }
+
+        // Find missing parameters.
+        var missing = (ArrayList<String>) null;
+        for (var i = 0; i < arity; i++) {
+          if (!assigned[i]) {
+            if (missing == null) {
+              missing = new ArrayList<>();
+            }
+            missing.add(parameters.get(i));
+          }
+        }
+        if (missing != null) {
+          throw missingArguments(function, missing);
+        }
+
+        return bound;
+      }
+
 
       private static MethodHandle getThunkEntry(PyFunction function) {
         var code = function.code;
@@ -231,18 +304,18 @@ final class FunctionSupport {
       }
     }
 
-    static CallSite call(MethodType type, int positionalCount, List<String> keywordNames) {
+    static CallSite call(MethodType type, int positionalCount, String[] keywordNames) {
       return new FunctionSupport.FunctionCallSite(type, positionalCount, keywordNames, null, 0);
     }
 
     private static final int MAX_DEPTH = 4;
 
     private final int positionalCount;
-    private final List<String> keywordNames;
+    private final String[] keywordNames;
     private final FunctionCallSite root;
     private final int depth;
 
-    private FunctionCallSite(MethodType type, int positionalCount, List<String> keywordNames, FunctionCallSite root, int depth) {
+    private FunctionCallSite(MethodType type, int positionalCount, String[] keywordNames, FunctionCallSite root, int depth) {
       this.positionalCount = positionalCount;
       this.keywordNames = keywordNames;
       this.depth = depth;
@@ -254,13 +327,14 @@ final class FunctionSupport {
     MethodHandle fallback(Object callee) {
       var function = asFunction(callee);
 
-      // 1. If wrong arity
+      // 1. If megamorphic
       var argCount = type().parameterCount() - 1;
-      checkArity(function, argCount);
-
-      // 2. If megamorphic
       if (depth == MAX_DEPTH) {
-        var target = Megamorphic.MEGAMORPHIC.asCollector(Object[].class, argCount);
+        // if arguments only positional, use a simpler entry point
+        var entryPoint = keywordNames.length == 0 ?
+            Megamorphic.MEGAMORPHIC:
+            MethodHandles.insertArguments(Megamorphic.MEGAMORPHIC_WITH_KEYWORDS, 2, positionalCount, keywordNames);
+        var target = entryPoint.asCollector(Object[].class, argCount);
         root.setTarget(target);
         return target;
       }
@@ -268,20 +342,28 @@ final class FunctionSupport {
       var code = function.code;
       MethodHandle target, test;
       if (code.captureCount() == 0) {
-        // 3a. No captured args, do a quick function check
+        // 2a. No captured args, do a quick function check
         test = SAME_FUNCTION.bindTo(function);
         target = getNoCaptureMH(function);
       } else {
-        // 3b. captured args, do a code check
+        // 2b. captured args, do a code check
         test = SAME_CODE.bindTo(code);
         target = getEntry(code);
       }
 
       // 4. adapt to callsite: entry: (PyFunction self, args...) -> Object
       var arity = function.arity();
-      var adapted = adapt(function, target, 1 + arity, argCount - arity).asType(type());
+      MethodHandle adapted;
+      if (keywordNames.length == 0) {
+        // 3a. Positional arguments only
+        checkArity(function, argCount);
+        adapted = adapt(function, target, 1 + arity, argCount - arity).asType(type());
+      } else {
+        // 3b. Positional + Keywords arguments
+        adapted = adaptKeywords(function, target, type());
+      }
 
-      // 5. Install the inlining cache
+      // 4. Install the inlining cache
       var fallback = new FunctionCallSite(type(), positionalCount, keywordNames, root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
@@ -390,6 +472,66 @@ final class FunctionSupport {
       return RestAdapter.adapt(entry, position, restCount);
     }
 
+    /// Adapt the entry to permtute the keyword parameters
+    private MethodHandle adaptKeywords(PyFunction function, MethodHandle entry, MethodType type) {
+      var parameters = function.parameters();
+      var arity = parameters.size();
+      if (positionalCount > arity && !function.code.hasRestParameter()) {
+        throw tooManyPositional(function, positionalCount);
+      }
+
+      var restCount = Math.max(0, positionalCount - arity);
+      var reorder = new int[1 + arity + restCount];
+      var assigned = new boolean[arity];
+      // The callee stays at position zero.
+      reorder[0] = 0;
+
+      // Bind positional arguments.
+      for (var i = 0; i < Math.min(positionalCount, arity); i++) {
+        reorder[1 + i] = 1 + i;
+        assigned[i] = true;
+      }
+
+      // Bind keyword arguments.
+      for (var i = 0; i < keywordNames.length; i++) {
+        var name = keywordNames[i];
+        var index = parameters.indexOf(name);
+        if (index < 0) {
+          throw unexpectedKeyword(function, name);
+        }
+        if (assigned[index]) {
+          throw multipleValues(function, name);
+        }
+        reorder[1 + index] = 1 + positionalCount + i;
+        assigned[index] = true;
+      }
+
+      // Check missing arguments.
+      var missing = (ArrayList<String>) null;
+      for (var i = 0; i < arity; i++) {
+        if (!assigned[i]) {
+          if (missing == null) {
+            missing = new ArrayList<String>();
+          }
+          missing.add(parameters.get(i));
+        }
+      }
+      if (missing != null) {
+        throw missingArguments(function, missing);
+      }
+
+      // Keep excess positional arguments in their original order.
+      for (var i = 0; i < restCount; i++) {
+        reorder[1 + arity + i] = 1 + arity + i;
+      }
+
+      // Adapt the compiled entry to canonical argument order.
+      var adapted = FunctionCallSite.adapt(function, entry, 1 + arity, restCount)
+          .asType(type);
+
+      return MethodHandles.permuteArguments(adapted, type, reorder);
+    }
+
     private static PyTypeError arityError(PyFunction function, int given) {
       var arity = function.arity();
       if (given < arity) {
@@ -413,6 +555,40 @@ final class FunctionSupport {
           yield sb.append("and '").append(names.getLast()).append('\'').toString();
         }
       };
+    }
+
+    private static PyTypeError unexpectedKeyword(PyFunction function, String name) {
+      return new PyTypeError(
+          function.name() +
+              "() got an unexpected keyword argument '" + name + "'"
+      );
+    }
+
+    private static PyTypeError multipleValues(PyFunction function, String name) {
+      return new PyTypeError(
+          function.name() +
+              "() got multiple values for argument '" + name + "'"
+      );
+    }
+
+    private static PyTypeError missingArguments(PyFunction function, List<String> missing) {
+      return new PyTypeError(
+          function.name() + "() missing " +
+              missing.size() + " required positional argument" +
+              (missing.size() == 1 ? "" : "s") +
+              ": " + joinNames(missing)
+      );
+    }
+
+    private static PyTypeError tooManyPositional(PyFunction function, int given) {
+      var arity = function.arity();
+      return new PyTypeError(
+          function.name() + "() takes " +
+              arity + " positional argument" +
+              (arity == 1 ? "" : "s") +
+              " but " + given +
+              (given == 1 ? " was" : " were") + " given"
+      );
     }
   }
 }

@@ -1504,6 +1504,59 @@ public final class BytecodeGeneratorTest {
   }
 
   @Nested
+  public final class KeywordArguments {
+    @Test
+    public void functionCallWithOneKeywordArgument() {
+      var source = """
+            def f(a, b):
+                return a * 10 + b
+            r = f(a=1, b=2)
+            """;
+      assertEquals(12L, eval(source, "r"));
+    }
+
+    @Test
+    public void functionCallWithMixedPositionalAndKeywordArguments() {
+      var source = """
+            def f(a, b, c):
+                return a * 100 + b * 10 + c
+            r = f(1, c=3, b=2)
+            """;
+      assertEquals(123L, eval(source, "r"));
+    }
+
+    @Test
+    public void functionCallWithOnlyKeywordArguments() {
+      var source = """
+            def f(a, b):
+                return a - b
+            r = f(b=5, a=10)
+            """;
+      assertEquals(5L, eval(source, "r"));
+    }
+
+    @Test
+    public void duplicateKeywordArgumentRaisesTypeError() {
+      var source = """
+            def f(a):
+                return a
+            r = f(a=1, a=2)
+            """;
+      assertThrows(PyTypeError.class, () -> Compiler.run(source));
+    }
+
+    @Test
+    public void missingRequiredKeywordArgumentRaisesTypeError() {
+      var source = """
+            def f(a, b):
+                return a + b
+            r = f(a=1)
+            """;
+      assertThrows(PyTypeError.class, () -> Compiler.run(source));
+    }
+  }
+
+  @Nested
   public final class Scope {
 
     @Test

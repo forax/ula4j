@@ -318,6 +318,156 @@ public final class FunctionSupportTest {
   }
 
 
+  /*private enum CallShape {
+    POSITIONAL, KEYWORDS, MIXED;
+
+    String invocation() {
+      return switch (this) {
+        case POSITIONAL -> "fn(1, 2, 3)";
+        case KEYWORDS -> "fn(c=3, a=1, b=2)";
+        case MIXED -> "fn(1, c=3, b=2)";
+      };
+    }
+
+    String invocation(String callee) {
+      return invocation().replace("fn(", callee + "(");
+    }
+
+    String parameters(int i) {
+      return switch (this) {
+        case POSITIONAL -> "a, b, c";
+        case KEYWORDS -> switch (i % 6) {
+          case 0 -> "a, b, c";
+          case 1 -> "c, a, b";
+          case 2 -> "b, c, a";
+          case 3 -> "c, b, a";
+          case 4 -> "b, a, c";
+          default -> "a, c, b";
+        };
+        // Keep 'a' first because the first argument is positional.
+        case MIXED -> i % 2 == 0 ? "a, b, c" : "a, c, b";
+      };
+    }
+  }*/
+
+
+  private enum CallShape {
+    POSITIONAL {
+      @Override String invocation() {
+        return "fn(1, 2, 3)";
+      }
+
+      @Override String parameters(int i) {
+        return "a, b, c";
+      }
+    },
+
+    KEYWORDS {
+      @Override String invocation() {
+        return "fn(c=3, a=1, b=2)";
+      }
+
+      @Override String parameters(int i) {
+        return switch (i % 6) {
+          case 0 -> "a, b, c";
+          case 1 -> "c, a, b";
+          case 2 -> "b, c, a";
+          case 3 -> "c, b, a";
+          case 4 -> "b, a, c";
+          default -> "a, c, b";
+        };
+      }
+    },
+
+    MIXED {
+      @Override String invocation() {
+        return "fn(1, c=3, b=2)";
+      }
+
+      @Override String parameters(int i) {
+        // Keep 'a' first because the first argument is positional.
+        return i % 2 == 0 ? "a, b, c" : "a, c, b";
+      }
+    };
+
+    abstract String invocation();
+    abstract String parameters(int i);
+
+    String invocation(String callee) {
+      return invocation().replace("fn(", callee + "(");
+    }
+  }
+
+
+
+  private static String keywordDispatchSource(int n, boolean captured, CallShape shape, boolean warm) {
+    var builder = new StringBuilder();
+
+    // Create n functions with the same parameter names,
+    // but potentially different declaration orders.
+    for (var i = 0; i < n; i++) {
+      var parameters = shape.parameters(i);
+
+      if (captured) {
+        builder.append("def make").append(i).append("(k):\n")
+            .append("    def f(").append(parameters).append("):\n")
+            .append("        return a * 100 + b * 10 + c + k\n")
+            .append("    return f\n")
+            .append("c").append(i).append(" = make").append(i).append('(')
+            .append(1000 * i).append(")\n");
+      } else {
+        builder.append("def f").append(i)
+            .append("(").append(parameters).append("):\n")
+            .append("    return a * 100 + b * 10 + c + ")
+            .append(1000 * i).append('\n');
+      }
+    }
+
+    // One shared call site. This is the important part.
+    builder.append("def apply(fn):\n")
+        .append("    return ").append(shape.invocation()).append('\n');
+
+    // Warm the function bodies before using the shared call site.
+    if (warm) {
+      for (var i = 0; i < n; i++) {
+        var callee = captured ? "c" + i : "f" + i;
+        builder.append("w").append(i).append(" = ")
+            .append(shape.invocation(callee)).append('\n');
+      }
+    }
+
+    // Three rounds: forward, backward, forward.
+    for (var round = 0; round < 3; round++) {
+      for (var j = 0; j < n; j++) {
+        var i = round == 1 ? n - 1 - j : j;
+        var callee = captured ? "c" + i : "f" + i;
+
+        builder.append('r').append(round).append('_').append(i)
+            .append(" = apply(").append(callee).append(")\n");
+      }
+    }
+
+    return builder.toString();
+  }
+
+  private static void checkKeywordDispatch(int n, boolean captured, CallShape shape, boolean warm
+  ) {
+    var module = run(keywordDispatchSource(n, captured, shape, warm));
+
+    for (var round = 0; round < 3; round++) {
+      for (var i = 0; i < n; i++) {
+        assertGlobal(module, "r" + round + "_" + i, 123L + 1000L * i);
+      }
+    }
+
+    if (warm) {
+      for (var i = 0; i < n; i++) {
+        assertGlobal(module, "w" + i, 123L + 1000L * i);
+      }
+    }
+  }
+
+
   @Nested
   public final class Definition {
 
@@ -1007,6 +1157,34 @@ public final class FunctionSupportTest {
           """;
       assertEquals(123L, eval(source, "r"));
     }
+
+    @Test
+    public void keywordArgumentsWithRestParameter() {
+      var module = run("""
+          def make(k):
+              def collect(a, b, c, *rest):
+                  total = k + a * 100 + b * 10 + c
+                  for x in rest:
+                      total += x
+                  return total
+              return collect
+          
+          def apply(fn):
+              return fn(1, c=3, b=2)
+          
+          def plain(a, b, c, *rest):
+              total = a * 100 + b * 10 + c
+              for x in rest:
+                  total += x
+              return total
+          
+          r0 = apply(plain)
+          r1 = apply(make(1000))
+          """);
+
+      assertGlobal(module, "r0", 123L);
+      assertGlobal(module, "r1", 1123L);
+    }
   }
 
 
@@ -1434,6 +1612,41 @@ public final class FunctionSupportTest {
       assertGlobal(module, "r2", 1005L);
       assertGlobal(module, "r3", 106L);
     }
+
+    @Test
+    public void closuresOfOneDefWithKeywordArguments() {
+      var module = run("""
+          def make(k):
+              def add(a, b, c):
+                  return a * 100 + b * 10 + c + k
+              return add
+          
+          def apply(fn):
+              return fn(c=3, a=1, b=2)
+          
+          x0 = make(0)
+          x1 = make(1000)
+          x2 = make(2000)
+          x3 = make(3000)
+          x4 = make(4000)
+          
+          r0 = apply(x0)
+          r1 = apply(x1)
+          r2 = apply(x2)
+          r3 = apply(x3)
+          r4 = apply(x4)
+          r5 = apply(x0)
+          r6 = apply(x3)
+          """);
+
+      assertGlobal(module, "r0", 123L);
+      assertGlobal(module, "r1", 1123L);
+      assertGlobal(module, "r2", 2123L);
+      assertGlobal(module, "r3", 3123L);
+      assertGlobal(module, "r4", 4123L);
+      assertGlobal(module, "r5", 123L);
+      assertGlobal(module, "r6", 3123L);
+    }
   }
 
 
@@ -1702,6 +1915,61 @@ public final class FunctionSupportTest {
       assertThrows(PyZeroDivisionError.class,
           () -> Compiler.run("def f(a):\n    return a\nf(1 // 0, 2)\n"));
     }
+
+    @Test
+    public void unexpectedKeyword() {
+      assertEquals(
+          "f() got an unexpected keyword argument 'unknown'",
+          assertTypeErrorMessage("""
+          def f(a, b):
+              return a
+          f(unknown=1)
+          """));
+    }
+
+    @Test
+    public void multipleValuesForParameter() {
+      assertEquals(
+          "f() got multiple values for argument 'a'",
+          assertTypeErrorMessage("""
+          def f(a, b):
+              return a
+          f(1, a=2)
+          """));
+    }
+
+    @Test
+    public void duplicateKeyword() {
+      assertEquals(
+          "f() got multiple values for argument 'a'",
+          assertTypeErrorMessage("""
+          def f(a, b):
+              return a
+          f(a=1, a=2)
+          """));
+    }
+
+    @Test
+    public void missingArgumentWithKeywords() {
+      assertEquals(
+          "f() missing 1 required positional argument: 'b'",
+          assertTypeErrorMessage("""
+          def f(a, b):
+              return a
+          f(a=1)
+          """));
+    }
+
+    @Test
+    public void missingSeveralArgumentsWithKeywords() {
+      assertEquals(
+          "f() missing 2 required positional arguments: 'b' and 'c'",
+          assertTypeErrorMessage("""
+          def f(a, b, c):
+              return a
+          f(a=1)
+          """));
+    }
   }
 
 
@@ -1824,6 +2092,83 @@ public final class FunctionSupportTest {
       runIn(ctx, "b = middle(50)\n");
       assertGlobal(ctx, "a", 11L);
       assertGlobal(ctx, "b", 3L);
+    }
+
+    @Test
+    public void megamorphicKeywordCallReportsErrorsAndRecovers() {
+      var ctx = new ModuleContext();
+      var builder = new StringBuilder();
+
+      for (var i = 0; i < 8; i++) {
+        builder.append("def f").append(i).append("(a, b, c):\n")
+            .append("    return a * 100 + b * 10 + c + ")
+            .append(i * 1000).append('\n');
+      }
+
+      builder.append("""
+          def apply(fn):
+              return fn(c=3, a=1, b=2)
+          """);
+
+      for (var i = 0; i < 8; i++) {
+        builder.append("r").append(i)
+            .append(" = apply(f").append(i).append(")\n");
+      }
+
+      runIn(ctx, builder.toString());
+
+      // The site is now megamorphic.
+      var e = assertThrows(PyTypeError.class, () ->
+          runIn(ctx, """
+              def wrong(x, y, z):
+                  return x
+              bad = apply(wrong)
+              """));
+
+      assertEquals(
+          "wrong() got an unexpected keyword argument 'c'",
+          e.getMessage()
+      );
+
+      // A valid callee must still work afterward.
+      runIn(ctx, "ok = apply(f7)\n");
+
+      assertGlobal(ctx, "ok", 7123L);
+    }
+  }
+
+
+  @Nested
+  public final class KeywordCalls {
+
+    @Test
+    public void monomorphic() {
+      for (var captured : List.of(false, true)) {
+        for (var shape : CallShape.values()) {
+          checkKeywordDispatch(1, captured, shape, false);
+          checkKeywordDispatch(1, captured, shape, true);
+        }
+      }
+    }
+
+    @Test
+    public void polymorphic() {
+      for (var captured : List.of(false, true)) {
+        for (var shape : CallShape.values()) {
+          checkKeywordDispatch(4, captured, shape, false);
+          checkKeywordDispatch(4, captured, shape, true);
+        }
+      }
+    }
+
+    @Test
+    public void megamorphic() {
+      for (var captured : List.of(false, true)) {
+        for (var shape : CallShape.values()) {
+          checkKeywordDispatch(8, captured, shape, false);
+          checkKeywordDispatch(8, captured, shape, true);
+        }
+      }
     }
   }
 
