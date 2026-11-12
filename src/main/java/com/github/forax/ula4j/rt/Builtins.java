@@ -52,7 +52,8 @@ final class Builtins {
       builder.append(separator).append(StringIntrinsics.$str$(arg));
       separator = " ";
     }
-    System.out.println(builder.toString());
+    builder.append('\n');
+    System.out.print(builder.toString());
     return PyNone.INSTANCE;
   }
 }
