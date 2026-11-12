@@ -1,11 +1,47 @@
 package com.github.forax.ula4j.rt;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
 public sealed interface PyTuple {
+
+  default int size() {
+    return switch (this) {
+      case PyTuple1 _ -> 1;
+      case PyTuple2 _ -> 2;
+      case PyTuple3 _ -> 3;
+      case PyTuple4 _ -> 4;
+      case PyTupleN tuple -> tuple.itemCount();
+    };
+  }
+
+  default Object get(int index) {
+    return switch (this) {
+      case PyTuple1 t -> {
+        Objects.checkIndex(index, 1);
+        yield t.item0();
+      }
+      case PyTuple2 t -> {
+        Objects.checkIndex(index, 2);
+        yield index == 0 ? t.item0() : t.item1();
+      }
+      case PyTuple3 t -> {
+        Objects.checkIndex(index, 3);
+        yield  index == 0 ? t.item0() : index == 1 ? t.item1() : t.item2();
+      }
+      case PyTuple4 t -> {
+        Objects.checkIndex(index, 4);
+        yield index == 0 ? t.item0() : index == 1 ? t.item1() : index == 2 ? t.item2() : t.item3();
+      }
+      case PyTupleN t -> {
+        Objects.checkIndex(index, t.itemCount());
+        yield t.itemAt(index);
+      }
+    };
+  }
 
   record PyTuple1(Object item0) implements PyTuple {
     public PyTuple1 {

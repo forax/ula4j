@@ -44,6 +44,12 @@ public final class ContainmentIntrinsicsTest {
       assertFalse(ContainmentIntrinsics.$in$(42L, tuple));
       assertFalse(ContainmentIntrinsics.$in$("z", tuple));
     }
+
+    @Test
+    public void containsNaN() {
+      var tuple = TupleIntrinsics.fromArray(1L, Double.NaN);
+      assertTrue(ContainmentIntrinsics.$in$(Double.NaN, tuple));
+    }
   }
 
   @Nested

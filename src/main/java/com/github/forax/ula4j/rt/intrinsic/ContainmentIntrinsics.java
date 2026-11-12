@@ -21,32 +21,10 @@ public final class ContainmentIntrinsics {
               "'in <string>' requires string as left operand, not " + typeName(item));
         }
       }
-      case PyTuple tuple -> { return tupleContains(tuple, item); }
-      case PyList<?> list -> { return listContains(list, item); }
+      case PyTuple tuple -> { return TupleIntrinsics.$in$(tuple, item); }
+      case PyList<?> list -> { return ListIntrinsics.$in$(list, item); }
       case PyDict<?,?> dict -> { return DictIntrinsics.containsKey(dict, item); }
       default -> throw new PyTypeError("argument of type '" + typeName(container) + "' is not iterable");
     }
-  }
-
-  private static boolean listContains(PyList<?> list, Object item) {
-    var index = 0;
-    // Do not snapshot size: the list may grow while membership is being evaluated.
-    while (index < list.size()) {
-      if (ComparisonIntrinsics.$eq$(list.get(index), item)) {
-        return true;
-      }
-      index++;
-    }
-    return false;
-  }
-
-  private static boolean tupleContains(PyTuple tuple, Object item) {
-    var size = TupleIntrinsics.$size$(tuple);
-    for (var i = 0L; i < size; i++) {
-      if (ComparisonIntrinsics.$eq$(TupleIntrinsics.$get$(tuple, i), item)) {
-        return true;
-      }
-    }
-    return false;
   }
 }

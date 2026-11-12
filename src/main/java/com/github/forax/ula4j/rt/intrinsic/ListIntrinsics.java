@@ -103,6 +103,45 @@ public final class ListIntrinsics {
     return list;
   }
 
+  @Intrinsic
+  public static boolean $in$(PyList<?> list, Object item) {
+    switch (item) {
+      case Double d -> {
+        if (Double.isNaN(d)) {
+          return listContainsNaN(list);
+        }
+        return listContains(list, d);
+      }
+      default -> { return listContains(list, item); }
+    }
+  }
+
+  private static boolean listContains(PyList<?> list, Object item) {
+    var index = 0;
+    // Do not snapshot size: the list may grow while membership is being evaluated.
+    while (index < list.size()) {
+      var value = list.get(index);
+      if (ComparisonIntrinsics.$eq$(value, item)) {
+        return true;
+      }
+      index++;
+    }
+    return false;
+  }
+
+  private static boolean listContainsNaN(PyList<?> list) {
+    var index = 0;
+    // Do not snapshot size: the list may grow while membership is being evaluated.
+    while (index < list.size()) {
+      var value = list.get(index);
+      if (value instanceof Double d && Double.isNaN(d)) {
+        return true;
+      }
+      index++;
+    }
+    return false;
+  }
+
   private static int checkedIndex(long index, int size) {
     // Adding size to a negative long cannot overflow: size is non-negative and at most int-sized.
     var normalized = index < 0 ? index + size : index;
