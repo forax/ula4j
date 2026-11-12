@@ -4,6 +4,7 @@ import com.github.forax.ula4j.ast.UnsupportedSyntaxException;
 import com.github.forax.ula4j.rt.PyDict;
 import com.github.forax.ula4j.rt.PyList;
 import com.github.forax.ula4j.rt.PyNone;
+import com.github.forax.ula4j.rt.PyTuple;
 import com.github.forax.ula4j.rt.error.PyIndexError;
 import com.github.forax.ula4j.rt.error.PyKeyError;
 import com.github.forax.ula4j.rt.error.PyNameError;
@@ -2106,6 +2107,188 @@ public final class BytecodeGeneratorTest {
   }
 
 
+  @Nested
+  public final class TupleLiteral {
+
+    @Test
+    public void emptyTuple() {
+      var tuple = (PyTuple) eval("x = ()", "x");
+      assertEquals(0, tuple.size());
+    }
+
+    @Test
+    public void singleElementTupleWithTrailingComma() {
+      var tuple = (PyTuple) eval("x = (42,)", "x");
+      assertEquals(1, tuple.size());
+      assertEquals(42L, tuple.get(0));
+    }
+
+    @Test
+    public void twoElementTuple() {
+      var tuple = (PyTuple) eval("x = (1, 2)", "x");
+      assertEquals(2, tuple.size());
+      assertEquals(1L, tuple.get(0));
+      assertEquals(2L, tuple.get(1));
+    }
+
+    @Test
+    public void threeElementTuple() {
+      var tuple = (PyTuple) eval("x = (1, 2, 3)", "x");
+      assertEquals(3, tuple.size());
+      assertEquals(1L, tuple.get(0));
+      assertEquals(2L, tuple.get(1));
+      assertEquals(3L, tuple.get(2));
+    }
+
+    @Test
+    public void fourElementTuple() {
+      var tuple = (PyTuple) eval("x = (1, 2, 3, 4)", "x");
+      assertEquals(4, tuple.size());
+      assertEquals(1L, tuple.get(0));
+      assertEquals(2L, tuple.get(1));
+      assertEquals(3L, tuple.get(2));
+      assertEquals(4L, tuple.get(3));
+    }
+
+    @Test
+    public void largeTupleUsesPyTupleN() {
+      var tuple = (PyTuple) eval("x = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)", "x");
+      assertEquals(10, tuple.size());
+      for (var i = 0; i < 10; i++) {
+        assertEquals((long) (i + 1), tuple.get(i));
+      }
+    }
+
+    @Test
+    public void tupleWithMixedTypes() {
+      var tuple = (PyTuple) eval("x = (1, 2.5, 'hello', True, None)", "x");
+      assertEquals(5, tuple.size());
+      assertEquals(1L, tuple.get(0));
+      assertEquals(2.5, tuple.get(1));
+      assertEquals("hello", tuple.get(2));
+      assertEquals(true, tuple.get(3));
+      assertEquals(PyNone.INSTANCE, tuple.get(4));
+    }
+
+    @Test
+    public void tupleWithExpressions() {
+      var tuple = (PyTuple) eval("x = (1 + 2, 3 * 4, 'a' + 'b')", "x");
+      assertEquals(3, tuple.size());
+      assertEquals(3L, tuple.get(0));
+      assertEquals(12L, tuple.get(1));
+      assertEquals("ab", tuple.get(2));
+    }
+
+    @Test
+    public void nestedTuples() {
+      var tuple = (PyTuple) eval("x = ((1, 2), (3, 4))", "x");
+      assertEquals(2, tuple.size());
+      var first = (PyTuple) tuple.get(0);
+      var second = (PyTuple) tuple.get(1);
+      assertEquals(1L, first.get(0));
+      assertEquals(2L, first.get(1));
+      assertEquals(3L, second.get(0));
+      assertEquals(4L, second.get(1));
+    }
+
+    @Test
+    public void tupleEquality() {
+      assertEquals(true, eval("x = (1, 2) == (1, 2)", "x"));
+      assertEquals(false, eval("x = (1, 2) == (1, 3)", "x"));
+    }
+
+    @Test
+    public void tupleIndexing() {
+      assertEquals(2L, eval("x = (1, 2, 3)[1]", "x"));
+      assertEquals(3L, eval("x = (1, 2, 3)[-1]", "x"));
+    }
+
+    @Test
+    public void tupleImmutability() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = (1, 2, 3)\nx[0] = 9"));
+    }
+  }
+
+  @Nested
+  public final class TupleIndexing {
+
+    @Test
+    public void indexFirst() {
+      assertEquals(1L, eval("x = (1, 2, 3)[0]", "x"));
+    }
+
+    @Test
+    public void indexLast() {
+      assertEquals(3L, eval("x = (1, 2, 3)[2]", "x"));
+    }
+
+    @Test
+    public void indexNegative() {
+      assertEquals(3L, eval("x = (1, 2, 3)[-1]", "x"));
+      assertEquals(1L, eval("x = (1, 2, 3)[-3]", "x"));
+    }
+
+    @Test
+    public void indexPositiveOutOfRange() {
+      assertThrows(PyIndexError.class, () -> Compiler.run("x = (1, 2, 3)[3]"));
+    }
+
+    @Test
+    public void indexNegativeOutOfRange() {
+      assertThrows(PyIndexError.class, () -> Compiler.run("x = (1, 2, 3)[-4]"));
+    }
+
+    @Test
+    public void indexEmptyTuple() {
+      assertThrows(PyIndexError.class, () -> Compiler.run("x = ()[0]"));
+    }
+
+    @Test
+    public void indexWithVariable() {
+      assertEquals(20L, eval("i = 1\nx = (10, 20, 30)[i]", "x"));
+    }
+
+    @Test
+    public void indexWithExpression() {
+      assertEquals(30L, eval("x = (10, 20, 30)[1 + 1]", "x"));
+    }
+
+    @Test
+    public void indexNestedTuple() {
+      assertEquals(2L, eval("x = ((1, 2), (3, 4))[0][1]", "x"));
+      assertEquals(4L, eval("x = ((1, 2), (3, 4))[1][1]", "x"));
+    }
+
+    @Test
+    public void indexMixedTypes() {
+      assertEquals("hello", eval("x = (1, 'hello', True)[1]", "x"));
+      assertEquals(true, eval("x = (1, 'hello', True)[2]", "x"));
+    }
+
+    @Test
+    public void indexInvalidType() {
+      assertThrows(PyTypeError.class, () -> Compiler.run("x = (1, 2)[1.5]"));
+    }
+  }
+
+  @Nested
+  public final class TupleAssignment {
+    @Test
+    public void assignToTupleElementFails() {
+      // tuple is immutable
+      assertThrows(PyTypeError.class, () -> Compiler.run("t = (1, 2, 3)\nt[0] = 9"));
+    }
+  }
+
+  @Nested
+  public final class TupleDeletion {
+    @Test
+    public void deleteFromTupleElementFails() {
+      // tuples are immutable, so items cannot be deleted
+      assertThrows(PyTypeError.class, () -> Compiler.run("t = (1, 2, 3)\ndel t[0]"));
+    }
+  }
+
 
   @Nested
   public final class ContainerOperations {
@@ -2157,7 +2340,6 @@ public final class BytecodeGeneratorTest {
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ndel x"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x[1:2]"));
       assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = 1\ny = x.m()"));
-      assertThrows(UnsupportedSyntaxException.class, () -> Compiler.run("x = (1, 2)"));
     }
 
     @Test
