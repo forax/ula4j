@@ -1,6 +1,7 @@
 package com.github.forax.ula4j.rt;
 
 import com.github.forax.ula4j.compiler.Compiler;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -25,27 +26,30 @@ public final class BuiltinsTest {
   }
 
 
-  @Test
-  public void printOneArgument() throws IOException {
-    var out = runCaptureOutput("""
-        print("hello, world!")
-        """);
-    assertEquals("hello, world!\n", out);
-  }
+  @Nested
+  public final class Print {
+    @Test
+    public void printOneArgument() throws IOException {
+      var out = runCaptureOutput("""
+          print("hello, world!")
+          """);
+      assertEquals("hello, world!\n", out);
+    }
 
-  @Test
-  public void printTwoArgument() throws IOException {
-    var out = runCaptureOutput("""
-        print("one", "two")
-        """);
-    assertEquals("one two\n", out);
-  }
+    @Test
+    public void printTwoArgument() throws IOException {
+      var out = runCaptureOutput("""
+          print("one", "two")
+          """);
+      assertEquals("one two\n", out);
+    }
 
-  @Test
-  public void printScalarValues() throws IOException {
-    var out = runCaptureOutput("""
-        print(12, 3.4, True, "hello", None, 12345678901234567890)
-        """);
-    assertEquals("12 3.4 True hello None 12345678901234567890\n", out);
+    @Test
+    public void printScalarValues() throws IOException {
+      var out = runCaptureOutput("""
+          print(12, 3.4, True, "hello", None, 12345678901234567890)
+          """);
+      assertEquals("12 3.4 True hello None 12345678901234567890\n", out);
+    }
   }
 }
