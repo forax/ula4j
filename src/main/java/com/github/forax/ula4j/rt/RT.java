@@ -4,6 +4,7 @@ import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.math.BigInteger;
+import java.util.List;
 
 /// Contains all bootstrap methods entry points
 public final class RT {
@@ -50,8 +51,8 @@ public final class RT {
     return FunctionSupport.DefCallSite.def(loader.context, loader.dictionary, type, astIndex);
   }
 
-  public static CallSite bsmCall(MethodHandles.Lookup lookup, String name, MethodType type) {
-    return FunctionSupport.FunctionCallSite.call(type);
+  public static CallSite bsmCall(MethodHandles.Lookup lookup, String name, MethodType type, int positionalCount, String... keywordNames) {
+    return FunctionSupport.FunctionCallSite.call(type, positionalCount, List.of(keywordNames));
   }
 
   public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {

@@ -103,9 +103,8 @@ final class ASTPrinter {
       case Expr.Or e -> node("or", l, c, expr(e.left()), expr(e.right()));
       case Expr.Compare e -> compare(e);
       case Expr.Conditional e -> node("conditional", l, c, expr(e.test()), expr(e.then()), expr(e.orElse()));
-      case Expr.Call e -> node("call", l, c, prepend(expr(e.func()), exprs(e.args())));
-      case Expr.MethodCall e ->
-          node("method", l, c, prepend(expr(e.receiver()), prepend(e.name(), exprs(e.args()))));
+      case Expr.Call e -> node("call", l, c, prepend(expr(e.func()), callArguments(e.args())));
+      case Expr.MethodCall e -> node("method", l, c, prepend(expr(e.receiver()), prepend(e.name(), callArguments(e.args()))));
       case Expr.Subscript e -> node("subscript", l, c, expr(e.value()), expr(e.index()));
       case Expr.Slice e -> node("slice", l, c, expr(e.lower()), expr(e.upper()), expr(e.step()));
       case Expr.ListDisplay e -> node("list", l, c, exprs(e.elements()));
@@ -115,6 +114,26 @@ final class ASTPrinter {
           .toList());
     };
   }
+
+
+  private List<String> callArguments(Expr.CallArguments args) {
+    var result = new ArrayList<String>(args.positional().size() + args.keywords().size());
+    // Positional arguments first.
+    result.addAll(exprs(args.positional()));
+    // Then keyword arguments.
+    for (var keyword : args.keywords()) {
+      result.add(node(
+          "keyword",
+          keyword.line(),
+          keyword.column(),
+          keyword.name(),
+          expr(keyword.value())
+      ));
+    }
+
+    return result;
+  }
+
 
   private String compare(Expr.Compare e) {
     var parts = new ArrayList<String>();

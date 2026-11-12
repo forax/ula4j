@@ -113,20 +113,37 @@ public sealed interface Expr {
     }
   }
 
-  record Call(Expr func, List<Expr> args, int line, int column) implements Expr {
+  record KeywordArgument(String name, Expr value, int line, int column) {
+    public KeywordArgument {
+      requireNonNull(name);
+      requireNonNull(value);
+    }
+  }
+
+  record CallArguments(
+      List<Expr> positional,
+      List<KeywordArgument> keywords
+  ) {
+    public CallArguments {
+      positional = List.copyOf(positional);
+      keywords = List.copyOf(keywords);
+    }
+  }
+
+  record Call(Expr func, CallArguments args, int line, int column) implements Expr {
     public Call {
       requireNonNull(func);
-      args = List.copyOf(args);
+      requireNonNull(args);
     }
   }
 
   /** {@code receiver.name(args)}; the only form of attribute access that is accepted. */
-  record MethodCall(Expr receiver, String name, List<Expr> args, int line, int column)
+  record MethodCall(Expr receiver, String name, CallArguments args, int line, int column)
       implements Expr {
     public MethodCall {
       requireNonNull(receiver);
       requireNonNull(name);
-      args = List.copyOf(args);
+      requireNonNull(args);
     }
   }
 

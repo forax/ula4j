@@ -794,7 +794,8 @@ public final class ASTBuilder {
 
   private Expr call(ParserRuleContext ctx, ParserRuleContext base) {
     var args = callArguments(one(ctx, ArgumentsContext.class));
-    if (base.getChildCount() == 3 && base.getChild(1) instanceof TerminalNode dot
+    if (base.getChildCount() == 3
+        && base.getChild(1) instanceof TerminalNode dot
         && dot.getText().equals(".")) {
       var receiver = expr(base.getChild(0));
       var name = identifier((NameContext) base.getChild(2));
@@ -803,33 +804,56 @@ public final class ASTBuilder {
     return new Expr.Call(expr(base), args, line(ctx), column(ctx));
   }
 
-  private List<Expr> callArguments(ArgumentsContext ctx) {
+  private Expr.CallArguments callArguments(ArgumentsContext ctx) {
     if (ctx == null) {
-      return List.of();
+      return new Expr.CallArguments(List.of(), List.of());
     }
-    var result = new ArrayList<Expr>();
+    var positional = new ArrayList<Expr>();
+    var keywords = new ArrayList<Expr.KeywordArgument>();
     for (var child : one(ctx, ArgsContext.class).children) {
       switch (child) {
-        case Starred_expressionContext c -> throw unsupported("star-unpacking in call", c);
-        case Assignment_expressionContext c -> throw unsupported("assignment expression", c);
-        case ExpressionContext c -> result.add(expression(c));
-        case KwargsContext c -> throw unsupportedKeywordArguments(c);
-        default -> { }  // ','
+        case Starred_expressionContext c ->
+            throw unsupported("star-unpacking in call", c);
+        case Assignment_expressionContext c ->
+            throw unsupported("assignment expression", c);
+        case ExpressionContext c ->
+            positional.add(expression(c));
+        case KwargsContext c ->
+            keywordArguments(c, keywords);
+        default -> { }  // commas
       }
     }
-    return result;
+    return new Expr.CallArguments(positional, keywords);
   }
 
-  private static UnsupportedSyntaxException unsupportedKeywordArguments(KwargsContext ctx) {
-    var first = ctx.getChild(0);
-    var inner = first.getChild(0);
-    var feature = switch (first) {
-      case Kwarg_or_starredContext _ ->
-          inner instanceof Starred_expressionContext ? "star-unpacking in call" : "keyword argument";
-      default -> inner instanceof TerminalNode ? "**-unpacking in call" : "keyword argument";
-    };
-    return unsupported(feature, first);
+  private void keywordArguments(KwargsContext ctx, List<Expr.KeywordArgument> keywords) {
+    for (var child : ctx.children) {
+      switch (child) {
+        case Kwarg_or_starredContext c -> keywords.add(keywordArgument(c));
+        case PythonParser.Kwarg_or_double_starredContext c -> keywords.add(keywordArgument(c));
+        default -> { }  // commas
+      }
+    }
   }
+
+  private Expr.KeywordArgument keywordArgument(ParserRuleContext ctx) {
+    var first = ctx.getChild(0);
+    if (first instanceof Starred_expressionContext c) {
+      throw unsupported("star-unpacking in call", c);
+    }
+    if (first instanceof TerminalNode) {
+      throw unsupported("**-unpacking in call", ctx);
+    }
+    var name = one(ctx, NameContext.class);
+    var value = one(ctx, ExpressionContext.class);
+    return new Expr.KeywordArgument(
+        identifier(name),
+        expression(value),
+        line(name),
+        column(name)
+    );
+  }
+
 
   private Expr subscriptIndex(SlicesContext ctx) {
     var items = new ArrayList<Expr>();

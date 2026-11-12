@@ -231,16 +231,20 @@ final class FunctionSupport {
       }
     }
 
-    static CallSite call(MethodType type) {
-      return new FunctionSupport.FunctionCallSite(type, null, 0);
+    static CallSite call(MethodType type, int positionalCount, List<String> keywordNames) {
+      return new FunctionSupport.FunctionCallSite(type, positionalCount, keywordNames, null, 0);
     }
 
     private static final int MAX_DEPTH = 4;
 
+    private final int positionalCount;
+    private final List<String> keywordNames;
     private final FunctionCallSite root;
     private final int depth;
 
-    private FunctionCallSite(MethodType type, FunctionCallSite root, int depth) {
+    private FunctionCallSite(MethodType type, int positionalCount, List<String> keywordNames, FunctionCallSite root, int depth) {
+      this.positionalCount = positionalCount;
+      this.keywordNames = keywordNames;
       this.depth = depth;
       super(type);
       this.root = root == null ? this : root;
@@ -278,7 +282,7 @@ final class FunctionSupport {
       var adapted = adapt(function, target, 1 + arity, argCount - arity).asType(type());
 
       // 5. Install the inlining cache
-      var fallback = new FunctionCallSite(type(), root, depth + 1).dynamicInvoker();
+      var fallback = new FunctionCallSite(type(), positionalCount, keywordNames, root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
       return adapted;

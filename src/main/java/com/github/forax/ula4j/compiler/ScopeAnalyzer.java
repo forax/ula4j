@@ -324,14 +324,20 @@ public final class ScopeAnalyzer {
       }
       case Expr.Call(var func, var args, _, _) -> {
         resolveExpr(func, scope);
-        for (var arg : args) {
+        for (var arg : args.positional()) {
           resolveExpr(arg, scope);
+        }
+        for (var arg : args.keywords()) {
+          resolveExpr(arg.value(), scope);
         }
       }
       case Expr.MethodCall(var receiver, _, var args, _, _) -> {
         resolveExpr(receiver, scope);
-        for (var arg : args) {
+        for (var arg : args.positional()) {
           resolveExpr(arg, scope);
+        }
+        for (var arg : args.keywords()) {
+          resolveExpr(arg.value(), scope);
         }
       }
       case Expr.Subscript(var value, var index, _, _) -> {
@@ -662,14 +668,20 @@ public final class ScopeAnalyzer {
       }
       case Expr.Call(var func, var args, _, _) -> {
         checkExpr(func, scope, assigned);
-        for (var arg : args) {
+        for (var arg : args.positional()) {
           checkExpr(arg, scope, assigned);
+        }
+        for (var arg : args.keywords()) {
+          checkExpr(arg.value(), scope, assigned);
         }
       }
       case Expr.MethodCall(var receiver, _, var args, _, _) -> {
         checkExpr(receiver, scope, assigned);
-        for (var arg : args) {
+        for (var arg : args.positional()) {
           checkExpr(arg, scope, assigned);
+        }
+        for (var arg : args.keywords()) {
+          checkExpr(arg.value(), scope, assigned);
         }
       }
       case Expr.Subscript(var value, var index, _, _) -> {

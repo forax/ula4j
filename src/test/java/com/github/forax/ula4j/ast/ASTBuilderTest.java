@@ -151,6 +151,12 @@ public final class ASTBuilderTest {
     assertAst("f(1, 2,)\n", "(block (expr (call f 1 2)))");
     assertAst("f(g(1))\n", "(block (expr (call f (call g 1))))");
     assertAst("f(1)(2)\n", "(block (expr (call (call f 1) 2)))");
+
+    // Keyword arguments
+    assertAst("f(a=1)\n", "(block (expr (call f (keyword a 1))))");
+    assertAst("f(1, b=2)\n", "(block (expr (call f 1 (keyword b 2))))");
+    assertAst("f(c=3, a=1)\n", "(block (expr (call f (keyword c 3) (keyword a 1))))");
+    assertAst("f(1, c=3, b=2)\n", "(block (expr (call f 1 (keyword c 3) (keyword b 2))))");
   }
 
   @Test
@@ -160,6 +166,11 @@ public final class ASTBuilderTest {
     assertAst("a.b(1).c(2)\n", "(block (expr (method (method a b 1) c 2)))");
     assertAst("'x'.join(y)\n", "(block (expr (method 'x' join y)))");
     assertAst("a[0].b()\n", "(block (expr (method (subscript a 0) b)))");
+
+    // Keyword arguments
+    assertAst("a.b(x=1)\n", "(block (expr (method a b (keyword x 1))))");
+    assertAst("a.b(1, y=2)\n", "(block (expr (method a b 1 (keyword y 2))))");
+    assertAst("a.b(1).c(2)\n", "(block (expr (method (method a b 1) c 2)))");
   }
 
   @Test
@@ -336,7 +347,6 @@ public final class ASTBuilderTest {
   @Test
   public void unsupportedStarAndKeywordArguments() {
     assertUnsupported("f(*a)\n", "star-unpacking in call", 1, 2);
-    assertUnsupported("f(a=1)\n", "keyword argument", 1, 2);
     assertUnsupported("f(**a)\n", "**-unpacking in call", 1, 2);
     assertUnsupported("x = *a, b\n", "star expression", 1, 4);
     assertUnsupported("x = [*a]\n", "star expression", 1, 5);
