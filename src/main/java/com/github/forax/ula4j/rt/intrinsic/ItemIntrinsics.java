@@ -49,8 +49,8 @@ public final class ItemIntrinsics {
     switch (container) {
       case PyList<?> list  -> result = ListIntrinsics.$delete$(list, $toIndex$(index, "list"));
       case PyDict<?,?> dict -> result = DictIntrinsics.$delete$((PyDict<Object, ?>) dict, index);
-      case PyTuple _ -> throw new PyTypeError("'tuple' object does not support item assignment");
-      case String _ -> throw new PyTypeError("'str' object does not support item assignment");
+      case PyTuple _ -> throw new PyTypeError("'tuple' doesn't support item deletion");
+      case String _ -> throw new PyTypeError("'str' doesn't support item deletion");
       default -> throw new PyTypeError("'" + typeName(container) + "' object is not subscriptable");
     }
     return result;
