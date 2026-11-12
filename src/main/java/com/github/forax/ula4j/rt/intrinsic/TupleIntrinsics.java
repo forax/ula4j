@@ -24,6 +24,11 @@ public final class TupleIntrinsics {
 
   // -- construction (not intrinsics)
 
+  /// Returns the canonical empty tuple.
+  public static PyTuple empty() {
+    return TUPLE_EMPTY;
+  }
+
   /// Builds a tuple in its canonical shape: arity 1-4 use a fixed record, 0 and 5+ use PyTupleN.
   /// The array is not retained.
   public static PyTuple fromArray(Object... items) {

@@ -44,16 +44,18 @@ public final class BytecodeGenerator {
   private static final String GEN_PACKAGE = "com/github/forax/ula4j/gen/";
   private static final String RT = "com/github/forax/ula4j/rt/RT";
   private static final String PY_NONE = "com/github/forax/ula4j/rt/PyNone";
-  private static final String PY_LIST = "com/github/forax/ula4j/rt/PyList";
   private static final String PY_DICT = "com/github/forax/ula4j/rt/PyDict";
+  private static final String PY_TUPLE = "com/github/forax/ula4j/rt/PyTuple";
+  private static final String PY_LIST = "com/github/forax/ula4j/rt/PyList";
   private static final String INTRINSICS = "com/github/forax/ula4j/rt/intrinsic/";
   private static final String ARITHMETIC = INTRINSICS + "ArithmeticIntrinsics";
   private static final String COMPARISON = INTRINSICS + "ComparisonIntrinsics";
   private static final String TRUTHINESS = INTRINSICS + "TruthinessIntrinsics";
   private static final String CONTAINMENT = INTRINSICS + "ContainmentIntrinsics";
   private static final String ITERATION = INTRINSICS + "IteratorIntrinsics";
-  private static final String LIST = INTRINSICS + "ListIntrinsics";
   private static final String DICT = INTRINSICS + "DictIntrinsics";
+  private static final String LIST = INTRINSICS + "ListIntrinsics";
+  private static final String TUPLE = INTRINSICS + "TupleIntrinsics";
   private static final String ITEM = INTRINSICS + "ItemIntrinsics";
 
   private static final String O = "Ljava/lang/Object;";
@@ -704,8 +706,20 @@ public final class BytecodeGenerator {
         }
         case Expr.Slice s -> throw unsupported("slice", s.line(), s.column());
         case Expr.ListDisplay d -> listDisplay(d);
-        case Expr.TupleDisplay d -> throw unsupported("tuple display", d.line(), d.column());
+        case Expr.TupleDisplay d -> tupleDisplay(d);
         case Expr.DictDisplay d -> dictDisplay(d);
+      }
+    }
+
+    /// Create a fresh dictionary, then insert its entries from left to right.
+    private void dictDisplay(Expr.DictDisplay display) {
+      mv.visitMethodInsn(INVOKESTATIC, DICT, "newDict", "()L" + PY_DICT + ";", false);
+      for (var entry : display.entries()) {
+        mv.visitInsn(DUP);
+        expr(entry.key());
+        expr(entry.value());
+        mv.visitMethodInsn(INVOKEVIRTUAL, PY_DICT, "put", "(" + O + O + ")" + O, false);
+        mv.visitInsn(POP);
       }
     }
 
@@ -719,15 +733,36 @@ public final class BytecodeGenerator {
       }
     }
 
-    /// Create a fresh dictionary, then insert its entries from left to right.
-    private void dictDisplay(Expr.DictDisplay display) {
-      mv.visitMethodInsn(INVOKESTATIC, DICT, "newDict", "()L" + PY_DICT + ";", false);
-      for (var entry : display.entries()) {
-        mv.visitInsn(DUP);
-        expr(entry.key());
-        expr(entry.value());
-        mv.visitMethodInsn(INVOKEVIRTUAL, PY_DICT, "put", "(" + O + O + ")" + O, false);
-        mv.visitInsn(POP);
+    /// Create a tuple, using specialized representations for small tuples.
+    private void tupleDisplay(Expr.TupleDisplay display) {
+      var elements = display.elements();
+      var size = elements.size();
+      switch (size) {
+        case 0 -> mv.visitMethodInsn(INVOKESTATIC, TUPLE, "empty",
+            "()L" + PY_TUPLE + ";", false);
+        case 1, 2, 3, 4 -> {
+          var owner = PY_TUPLE + "$PyTuple" + size;
+          mv.visitTypeInsn(NEW, owner);
+          mv.visitInsn(DUP);
+          for (var element : elements) {
+            expr(element);
+          }
+          mv.visitMethodInsn(INVOKESPECIAL, owner, "<init>",
+              "(" + O.repeat(size) + ")V", false);
+        }
+        default -> {
+          // PyTupleN: create an array and let fromArray() make a defensive copy.
+          mv.visitLdcInsn(size);
+          mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+          for (var i = 0; i < size; i++) {
+            mv.visitInsn(DUP);
+            mv.visitLdcInsn(i);
+            expr(elements.get(i));
+            mv.visitInsn(AASTORE);
+          }
+          mv.visitMethodInsn(INVOKESTATIC, TUPLE, "fromArray",
+              "([Ljava/lang/Object;)L" + PY_TUPLE + ";", false);
+        }
       }
     }
 
