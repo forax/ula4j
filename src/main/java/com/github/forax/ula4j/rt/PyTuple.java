@@ -1,5 +1,8 @@
 package com.github.forax.ula4j.rt;
 
+import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
+import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
+
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -49,6 +52,18 @@ public sealed interface PyTuple {
     }
 
     @Override
+    public boolean equals(Object other) {
+      Objects.requireNonNull(other);
+      return ComparisonIntrinsics.$eq$(this, other);
+    }
+
+    @Override
+    public int hashCode() {
+      var hash = HashingIntrinsics.$hash$(this);
+      return Long.hashCode(hash);
+    }
+
+    @Override
     public String toString() {
       return "PyTuple1(" + item0 + ")";
     }
@@ -58,6 +73,18 @@ public sealed interface PyTuple {
     public PyTuple2 {
       requireNonNull(item0);
       requireNonNull(item1);
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      Objects.requireNonNull(other);
+      return ComparisonIntrinsics.$eq$(this, other);
+    }
+
+    @Override
+    public int hashCode() {
+      var hash = HashingIntrinsics.$hash$(this);
+      return Long.hashCode(hash);
     }
 
     @Override
@@ -71,6 +98,18 @@ public sealed interface PyTuple {
       requireNonNull(item0);
       requireNonNull(item1);
       requireNonNull(item2);
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      Objects.requireNonNull(other);
+      return ComparisonIntrinsics.$eq$(this, other);
+    }
+
+    @Override
+    public int hashCode() {
+      var hash = HashingIntrinsics.$hash$(this);
+      return Long.hashCode(hash);
     }
 
     @Override
@@ -116,12 +155,14 @@ public sealed interface PyTuple {
 
     @Override
     public boolean equals(Object other) {
-      return other instanceof PyTupleN pyTupleN && Arrays.equals(items, pyTupleN.items);
+      Objects.requireNonNull(other);
+      return ComparisonIntrinsics.$eq$(this, other);
     }
 
     @Override
     public int hashCode() {
-      return Arrays.hashCode(items);
+      var hash = HashingIntrinsics.$hash$(this);
+      return Long.hashCode(hash);
     }
 
     @Override

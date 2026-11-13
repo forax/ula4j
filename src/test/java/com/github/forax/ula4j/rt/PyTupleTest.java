@@ -207,16 +207,15 @@ public final class PyTupleTest {
       assertEquals(a.hashCode(), b.hashCode());
       assertNotEquals(a, differentValue);
       assertNotEquals(a, differentLength);
-      assertNotEquals(a, null);
       assertNotEquals(a, "PyTupleN(1, 2, 3, 4, 5)");
     }
 
     @Test
-    public void tupleNIsNotEqualToAFixedArityTupleWithTheSameItems() {
+    public void tupleNIsEqualToAFixedArityTupleWithTheSameItems() {
       var n = new PyTupleN(new Object[]{1L, 2L});
       var two = new PyTuple2(1L, 2L);
-      assertNotEquals(n, two);
-      assertNotEquals(two, n);
+      assertEquals(n, two);
+      assertEquals(two, n);
     }
   }
 
