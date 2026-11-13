@@ -94,7 +94,7 @@ final class FunctionSupport {
   /// Each site owns a bounded chain of guards on the entry of the callee.
   ///
   /// Arguments are always validated (arity, keywords) before the callee is compiled.
-  /// Polymorphic and megamorphic paths shoudl share the same validation code.
+  /// Polymorphic and megamorphic paths should share the same validation code.
   static final class FunctionCallSite extends MutableCallSite {
     static final class Megamorphic {
       private Megamorphic() {
