@@ -67,11 +67,11 @@ public sealed interface PyTuple {
     }
 
     @Override
-    public boolean equals(Object obj) {
-      if (obj == this) {
-        return true;
+    public boolean equals(Object other) {
+      if (other == null) {
+        return false;
       }
-      return switch (obj) {
+      return switch (other) {
         case PyTuple1 tuple -> item0.equals(tuple.item0);
         case PyTupleN tuple when tuple.itemCount() == 1-> item0.equals(tuple.itemAt(0));
         default -> false;
@@ -95,11 +95,11 @@ public sealed interface PyTuple {
     }
 
     @Override
-    public boolean equals(Object obj) {
-      if (obj == this) {
-        return true;
+    public boolean equals(Object other) {
+      if (other == null) {
+        return false;
       }
-      return switch (obj) {
+      return switch (other) {
         case PyTuple2 tuple -> item0.equals(tuple.item0) && item1.equals(tuple.item1);
         case PyTupleN tuple when tuple.itemCount() == 2->
             item0.equals(tuple.itemAt(0)) && item1.equals(tuple.itemAt(1));
@@ -125,11 +125,11 @@ public sealed interface PyTuple {
     }
 
     @Override
-    public boolean equals(Object obj) {
-      if (obj == this) {
-        return true;
+    public boolean equals(Object other) {
+      if (other == null) {
+        return false;
       }
-      return switch (obj) {
+      return switch (other) {
         case PyTuple3 tuple -> item0.equals(tuple.item0) && item1.equals(tuple.item1) && item2.equals(tuple.item2);
         case PyTupleN tuple when tuple.itemCount() == 3->
             item0.equals(tuple.itemAt(0)) && item1.equals(tuple.itemAt(1)) && item2.equals(tuple.itemAt(2));
@@ -156,11 +156,11 @@ public sealed interface PyTuple {
     }
 
     @Override
-    public boolean equals(Object obj) {
-      if (obj == this) {
-        return true;
+    public boolean equals(Object other) {
+      if (other == null) {
+        return false;
       }
-      return switch (obj) {
+      return switch (other) {
         case PyTuple4 tuple -> item0.equals(tuple.item0) && item1.equals(tuple.item1) && item2.equals(tuple.item2);
         case PyTupleN tuple when tuple.itemCount() == 4->
             item0.equals(tuple.itemAt(0)) && item1.equals(tuple.itemAt(1)) && item2.equals(tuple.itemAt(2)) && item3.equals(tuple.itemAt(3));
