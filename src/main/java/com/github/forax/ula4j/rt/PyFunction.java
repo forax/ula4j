@@ -86,11 +86,14 @@ public final class PyFunction {
   ///
   /// @param args the positional arguments, must not be `null`
   /// @return the value returned by the function, `None` if it returns without a value
-  /// @throws NullPointerException if `args` is `null`
+  /// @throws NullPointerException if `args` is `null` or array element is `null``
   /// @throws PyBaseException if the function body raises a Python error
   /// @throws UndeclaredThrowableException if the function body raises a Java checked exception
   public Object call(Object... args) {
     Objects.requireNonNull(args);
+    for(var arg : args) {
+      Objects.requireNonNull(arg);
+    }
     try {
       return FunctionSupport.FunctionCallSite.Megamorphic.megamorphic(this, args);
     } catch (RuntimeException | Error e) {
@@ -105,6 +108,10 @@ public final class PyFunction {
   /// Captured variables are bound into the handle. The arity of `type` is validated eagerly with
   /// a Python `TypeError` (the same errors as a call). Arguments and return value are adapted with
   /// [MethodHandle#asType(MethodType)].
+  ///
+  /// In Python, Java null is not a valid value (use [PyNone#INSTANCE] to represent Python None).
+  /// Passing null violates the runtime's value invariant and may cause unexpected behavior,
+  /// including NullPointerException in unexpected location.
   ///
   /// @param type the method type the returned handle must conform to
   /// @return a method handle that invokes this function
