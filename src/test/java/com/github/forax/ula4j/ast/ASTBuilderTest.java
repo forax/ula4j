@@ -390,6 +390,12 @@ public final class ASTBuilderTest {
   }
 
   @Test
+  public void duplicateKeywordArguments() {
+    assertSyntaxError("f(a=1, a=2)\n", 1, 7);
+    assertSyntaxError("obj.f(a=1, a=2)\n", 1, 11);
+  }
+
+  @Test
   public void unsupportedStatements() {
     assertUnsupported("class A:\n    pass\n", "class", 1, 0);
     assertUnsupported("with a:\n    pass\n", "with", 1, 0);
