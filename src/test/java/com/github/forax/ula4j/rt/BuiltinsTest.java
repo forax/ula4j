@@ -55,32 +55,47 @@ public final class BuiltinsTest {
 
 
   @Nested
-  public final class Print {
+  public final class AsValues {
+    private static final String FIVE_PYTHON_CALLEES = """
+      def apply(fn, v):
+          return fn(v)
+      def a(x): return x
+      def b(x): return x
+      def c(x): return x
+      def d(x): return x
+      def e(x): return x
+      apply(a, 1)
+      apply(b, 1)
+      apply(c, 1)
+      apply(d, 1)
+      apply(e, 1)
+      """;
+
     @Test
-    public void printOneArgument() throws IOException {
-      assertEquals("hello, world!\n", runCaptureOutput("""
-          print("hello, world!")
-          """));
+    public void printAtAMegamorphicSite() throws IOException {
+      assertEquals("hello\n", runCaptureOutput(FIVE_PYTHON_CALLEES + "apply(print, 'hello')\n"));
     }
 
     @Test
-    public void printTwoArguments() throws IOException {
-      assertEquals("one two\n", runCaptureOutput("""
-          print("one", "two")
-          """));
+    public void fixedAndVariadicNativesAtAMegamorphicSite() throws IOException {
+      assertEquals("3\n1 2\n", runCaptureOutput(FIVE_PYTHON_CALLEES + """
+        print(apply(abs, -3))
+        def apply2(fn, a, b):
+            return fn(a, b)
+        apply2(print, 1, 2)
+        """));
     }
 
     @Test
-    public void printScalarValues() throws IOException {
-      assertEquals("12 3.4 True hello None 12345678901234567890\n",
-          runCaptureOutput("""
-              print(12, 3.4, True, "hello", None, 12345678901234567890)
-              """));
-    }
-
-    @Test
-    public void printNoArguments() throws IOException {
-      assertEquals("\n", runCaptureOutput("print()"));
+    public void printAtAMonomorphicAndPolymorphicSite() throws IOException {
+      assertEquals("1\n2 3\n", runCaptureOutput("""
+        def apply(fn, v):
+            return fn(v)
+        apply(print, 1)
+        def apply2(fn, a, b):
+            return fn(a, b)
+        apply2(print, 2, 3)
+        """));
     }
   }
 
@@ -656,6 +671,37 @@ public final class BuiltinsTest {
     public void argumentCount() {
       assertRaises(PyTypeError.class, "pow(1)");
       assertRaises(PyTypeError.class, "pow(1, 2, 3, 4)");
+    }
+  }
+
+
+  @Nested
+  public final class Print {
+    @Test
+    public void printOneArgument() throws IOException {
+      assertEquals("hello, world!\n", runCaptureOutput("""
+          print("hello, world!")
+          """));
+    }
+
+    @Test
+    public void printTwoArguments() throws IOException {
+      assertEquals("one two\n", runCaptureOutput("""
+          print("one", "two")
+          """));
+    }
+
+    @Test
+    public void printScalarValues() throws IOException {
+      assertEquals("12 3.4 True hello None 12345678901234567890\n",
+          runCaptureOutput("""
+              print(12, 3.4, True, "hello", None, 12345678901234567890)
+              """));
+    }
+
+    @Test
+    public void printNoArguments() throws IOException {
+      assertEquals("\n", runCaptureOutput("print()"));
     }
   }
 
