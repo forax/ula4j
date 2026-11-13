@@ -6,6 +6,7 @@ import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 
 import java.util.AbstractList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Objects;
 
 /// Mutable Python-list storage.
@@ -42,6 +43,7 @@ public final class PyList<E> extends AbstractList<E> {
 
   /// Creates a list by copying the supplied elements.
   @SafeVarargs
+  @SuppressWarnings("unchecked")
   public PyList(E... items) {
     Objects.requireNonNull(items);
     if (items.length > MAX_ARRAY_SIZE) {
@@ -50,7 +52,7 @@ public final class PyList<E> extends AbstractList<E> {
     for (var item : items) {
       Objects.requireNonNull(item);
     }
-    this.elements = Arrays.copyOf(items, items.length);
+    this.elements = (E[]) Arrays.copyOf(items, items.length, Object[].class);
     this.size = items.length;
     super();
   }
@@ -181,7 +183,7 @@ public final class PyList<E> extends AbstractList<E> {
     Objects.requireNonNull(o);
     for (var i = 0; i < size; i++) {
       var element = elements[i];
-      if (element == o || ComparisonIntrinsics.$eq$(element, o)) {
+      if (ComparisonIntrinsics.$sameOrEq$(element, o)) {
         return i;
       }
     }
@@ -190,9 +192,10 @@ public final class PyList<E> extends AbstractList<E> {
 
   @Override
   public int lastIndexOf(Object o) {
+    Objects.requireNonNull(o);
     for (var i = size - 1; i >= 0; i--) {
       var element = elements[i];
-      if (element == o || ComparisonIntrinsics.$eq$(element, o)) {
+      if (ComparisonIntrinsics.$sameOrEq$(element, o)) {
         return i;
       }
     }
@@ -207,6 +210,44 @@ public final class PyList<E> extends AbstractList<E> {
     }
     remove(index);
     return true;
+  }
+
+  @Override
+  public boolean removeAll(Collection<?> c) {
+    var dict = new PyDict<>();
+    for (var element : c) {
+      dict.put(element, true);
+    }
+    var toInset = 0;
+    for(var i = 0; i < size; i++) {
+      var element = elements[i];
+      if (!dict.containsKey(element)) {
+        elements[toInset++] = element;
+      }
+    }
+    Arrays.fill(elements, toInset, size, null);
+    var result = toInset != size;
+    size = toInset;
+    return result;
+  }
+
+  @Override
+  public boolean retainAll(Collection<?> c) {
+    var dict = new PyDict<>();
+    for (var element : c) {
+      dict.put(element, true);
+    }
+    var toInset = 0;
+    for(var i = 0; i < size; i++) {
+      var element = elements[i];
+      if (dict.containsKey(element)) {
+        elements[toInset++] = element;
+      }
+    }
+    Arrays.fill(elements, toInset, size, null);
+    var result = toInset != size;
+    size = toInset;
+    return result;
   }
 
   @Override
