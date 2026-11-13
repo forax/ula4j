@@ -1,9 +1,10 @@
 package com.github.forax.ula4j.rt;
 
+import com.github.forax.ula4j.ast.Stmt;
 import com.github.forax.ula4j.compiler.BytecodeGenerator;
 import com.github.forax.ula4j.compiler.ScopeAnalyzer;
-import com.github.forax.ula4j.ast.Stmt;
 import com.github.forax.ula4j.rt.error.PyTypeError;
+import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 import com.github.forax.ula4j.rt.intrinsic.IntrinsicSupport;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
 
@@ -18,6 +19,11 @@ import java.util.Arrays;
 import java.util.List;
 
 /// Implementation of the `def` / global bootstraps and of the lazy compilation of function bodies.
+///
+/// Calling conventions of a compiled entry ("entry" below):
+///  - Python function: `(captures..., PyFunction self, Object p0..pn-1 [, PyTuple rest]) -> Object`
+///  - native function: `(PyFunction self, Object p0..pn-1 [, Object[] rest]) -> Object` (fixed arity handle)
+/// For a native, `rest` is a plain array holding every argument after the declared parameters.
 final class FunctionSupport {
   private FunctionSupport() { throw new AssertionError(); }
 
@@ -86,6 +92,9 @@ final class FunctionSupport {
 
   /// A call site `(Object callee, Object arg0, ..., Object argN-1) -> Object`.
   /// Each site owns a bounded chain of guards on the entry of the callee.
+  ///
+  /// Arguments are always validated (arity, keywords) before the callee is compiled.
+  /// Polymorphic and megamorphic paths shoudl share the same validation code.
   static final class FunctionCallSite extends MutableCallSite {
     static final class Megamorphic {
       private Megamorphic() {
@@ -93,17 +102,19 @@ final class FunctionSupport {
       }
 
       static final MethodHandle MEGAMORPHIC, MEGAMORPHIC_WITH_KEYWORDS;
-      private static final MethodHandle ARRAY_ELEMENT, REST_TUPLE;
+      private static final MethodHandle ARRAY_ELEMENT, REST_TUPLE, NATIVE_REST;
       static {
         var lookup = MethodHandles.lookup();
         ARRAY_ELEMENT = MethodHandles.arrayElementGetter(Object[].class);
         try {
           MEGAMORPHIC = lookup.findStatic(Megamorphic.class, "megamorphic",
               MethodType.methodType(Object.class, Object.class, Object[].class));
-          MEGAMORPHIC_WITH_KEYWORDS =  lookup.findStatic(Megamorphic.class, "megamorphicWithKeywords",
+          MEGAMORPHIC_WITH_KEYWORDS = lookup.findStatic(Megamorphic.class, "megamorphicWithKeywords",
               MethodType.methodType(Object.class, Object.class, Object[].class, int.class, String[].class));
           REST_TUPLE = lookup.findStatic(Megamorphic.class, "restTuple",
               MethodType.methodType(PyTuple.class, Object[].class, int.class));
+          NATIVE_REST = lookup.findStatic(Megamorphic.class, "nativeRest",
+              MethodType.methodType(Object[].class, Object[].class, int.class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
         }
@@ -116,129 +127,73 @@ final class FunctionSupport {
         return thunkEntry.invokeExact(function.capturedArgs, function, args);
       }
 
-      static Object megamorphicWithKeywords(Object callee, Object[] args, int positionalCount, String[] keywordNames) throws Throwable {
+      static Object megamorphicWithKeywords(Object callee, Object[] args,
+                                            int positionalCount, String[] keywordNames) throws Throwable {
         var function = asFunction(callee);
-        var ordered = bindKeywordArguments(function, args, positionalCount, keywordNames);
+        var plan = reorderKeywordArguments(function, positionalCount, keywordNames);
+        var ordered = new Object[Math.max(positionalCount, function.arity())];
+        for (var i = 0; i < plan.length; i++) {
+          ordered[plan[i]] = args[i];
+        }
         var thunkEntry = getThunkEntry(function);
         return thunkEntry.invokeExact(function.capturedArgs, function, ordered);
       }
 
-      static Object[] bindKeywordArguments(PyFunction function, Object[] args, int positionalCount, String[] keywordNames) {
-        var keywordCount = keywordNames.length;
-        if (args.length != positionalCount + keywordCount) {
-          throw new IllegalArgumentException("inconsistent call arguments");
-        }
-
-        var parameters = function.parameters();
-        var arity = parameters.size();
-
-        // Builtins currently don't have explicit keyword signatures.
-        if (function.isBuiltin() && keywordCount != 0) {
-          throw unexpectedKeyword(function, keywordNames[0]);
-        }
-
-        // Too many positional arguments?
-        if (positionalCount > arity && !function.code.isVariadic()) {
-          throw tooManyPositional(function, positionalCount);
-        }
-
-        // Allocate canonical arguments, including the excess positional arguments
-        // that will eventually become *args.
-        var bound = new Object[Math.max(positionalCount, arity)];
-
-        // Copy positional arguments.
-        System.arraycopy(args, 0, bound, 0, positionalCount);
-
-        var assigned = new boolean[arity];
-        for (var i = 0; i < Math.min(positionalCount, arity); i++) {
-          assigned[i] = true;
-        }
-
-        // Bind keyword arguments.
-        for (var i = 0; i < keywordCount; i++) {
-          var name = keywordNames[i];
-          var index = parameters.indexOf(name);
-          if (index < 0) {
-            throw unexpectedKeyword(function, name);
-          }
-          if (assigned[index]) {
-            throw multipleValues(function, name);
-          }
-          bound[index] = args[positionalCount + i];
-          assigned[index] = true;
-        }
-
-        // Find missing parameters.
-        var missing = (ArrayList<String>) null;
-        for (var i = 0; i < arity; i++) {
-          if (!assigned[i]) {
-            if (missing == null) {
-              missing = new ArrayList<>();
-            }
-            missing.add(parameters.get(i));
-          }
-        }
-        if (missing != null) {
-          throw missingArguments(function, missing);
-        }
-
-        return bound;
-      }
-
-
       private static MethodHandle getThunkEntry(PyFunction function) {
         var code = function.code;
-        var thunkEntry = code.thunkEntry;
+        var thunkEntry = code.thunkEntry;  // racy read
         if (thunkEntry != null) {
           return thunkEntry;
         }
-        return computeThunkEntry(code);
-      }
-
-      private static MethodHandle computeThunkEntry(PyFunction.Code code) {
-        var compiledEntry = getCompiledEntry(code);
-        var thunkEntry = createThunk(compiledEntry, code);
-        code.thunkEntry = thunkEntry;
+        thunkEntry = createThunk(getCompiledEntry(code), code);  // idempotent
+        code.thunkEntry = thunkEntry;  // racy write
         return thunkEntry;
       }
 
+      /// Adapts the compiled entry to `(Object[] captured, PyFunction self, Object[] args) -> Object`
+      /// where `args` holds the declared parameters followed by the extra positional arguments.
       private static MethodHandle createThunk(MethodHandle compiledEntry, PyFunction.Code code) {
-        // 1. Spread captured arguments.
+        // 1. (Object[] captured, PyFunction self, <declared parameters> [, rest])
         var captureCount = code.captureCount();
         var handle = captureCount == 0
             ? MethodHandles.dropArguments(compiledEntry, 0, Object[].class)
             : compiledEntry.asSpreader(0, Object[].class, captureCount);
 
-        // 2. Ordinary function: spread positional arguments.
+        // 2. No rest parameter: spread the declared parameters (or ignore the array if there is none).
         var arity = code.parameters().size();
-        if (!code.hasRestParameter()) {
+        if (!code.isVariadic()) {
           return arity == 0
               ? MethodHandles.dropArguments(handle, 2, Object[].class)
               : handle.asSpreader(2, Object[].class, arity);
         }
 
-        // 3. Varargs function: extract fixed arguments and pack the rest.
+        // 3. Rest parameter (a PyTuple for Python code, an Object[] for a native):
+        //    read the declared parameters one by one and pack the remaining arguments.
+        var packer = code.isBuiltin() ? NATIVE_REST : REST_TUPLE;
         var filters = new MethodHandle[arity + 1];
         for (var i = 0; i < arity; i++) {
           filters[i] = MethodHandles.insertArguments(ARRAY_ELEMENT, 1, i);
         }
-        filters[arity] = MethodHandles.insertArguments(REST_TUPLE, 1, arity);
+        filters[arity] = MethodHandles.insertArguments(packer, 1, arity);
         var filtered = MethodHandles.filterArguments(handle, 2, filters);
 
-        // 4. Spread all args using permuteArguments
-        var type = MethodType.methodType(
-            Object.class, Object[].class, PyFunction.class, Object[].class);
-
+        // 4. Every filtered parameter reads the same args array.
+        var type = MethodType.methodType(Object.class, Object[].class, PyFunction.class, Object[].class);
         var reorder = new int[filtered.type().parameterCount()];
-        reorder[0] = 0;  // capturedArgs
+        reorder[0] = 0;  // captured
         reorder[1] = 1;  // self
         Arrays.fill(reorder, 2, reorder.length, 2);  // args
-
         return MethodHandles.permuteArguments(filtered, type, reorder);
       }
 
       private static PyTuple restTuple(Object[] args, int start) {
         return TupleIntrinsics.fromArrayRange(args, start);
+      }
+
+      /// The array is handed to the native as is when there is no declared parameter:
+      /// natives must neither retain nor modify it.
+      private static Object[] nativeRest(Object[] args, int start) {
+        return start == 0 ? args : Arrays.copyOfRange(args, start, args.length);
       }
     }
 
@@ -326,44 +281,45 @@ final class FunctionSupport {
 
     MethodHandle fallback(Object callee) {
       var function = asFunction(callee);
-
-      // 1. If megamorphic
       var argCount = type().parameterCount() - 1;
+
+      // 1. Megamorphic: the arguments are validated at each call
       if (depth == MAX_DEPTH) {
-        // if arguments only positional, use a simpler entry point
-        var entryPoint = keywordNames.length == 0 ?
-            Megamorphic.MEGAMORPHIC:
-            MethodHandles.insertArguments(Megamorphic.MEGAMORPHIC_WITH_KEYWORDS, 2, positionalCount, keywordNames);
+        var entryPoint = keywordNames.length == 0
+            ? Megamorphic.MEGAMORPHIC
+            : MethodHandles.insertArguments(Megamorphic.MEGAMORPHIC_WITH_KEYWORDS, 2, positionalCount, keywordNames);
         var target = entryPoint.asCollector(Object[].class, argCount);
         root.setTarget(target);
         return target;
       }
 
+      // 2. Validate the arguments before compiling the callee
+      int[] reorderPlan;
+      if (keywordNames.length == 0) {
+        checkArity(function, argCount);
+        reorderPlan = null;
+      } else {
+        reorderPlan = reorderKeywordArguments(function, positionalCount, keywordNames);
+      }
+
+      // 3. Entry of the callee: (Object callee | PyFunction self, <declared parameters> [, rest])
       var code = function.code;
       MethodHandle target, test;
       if (code.captureCount() == 0) {
-        // 2a. No captured args, do a quick function check
         test = SAME_FUNCTION.bindTo(function);
         target = getNoCaptureMH(function);
       } else {
-        // 2b. captured args, do a code check
         test = SAME_CODE.bindTo(code);
         target = getEntry(code);
       }
 
-      // 4. adapt to callsite: entry: (PyFunction self, args...) -> Object
+      // 4. Adapt to the call site
       var arity = function.arity();
-      MethodHandle adapted;
-      if (keywordNames.length == 0) {
-        // 3a. Positional arguments only
-        checkArity(function, argCount);
-        adapted = adapt(function, target, 1 + arity, argCount - arity).asType(type());
-      } else {
-        // 3b. Positional + Keywords arguments
-        adapted = adaptKeywords(function, target, type());
-      }
+      var adapted = reorderPlan == null
+          ? adapt(function, target, 1 + arity, argCount - arity).asType(type())
+          : adaptKeywords(function, target, type(), reorderPlan);
 
-      // 4. Install the inlining cache
+      // 5. Install the inlining cache
       var fallback = new FunctionCallSite(type(), positionalCount, keywordNames, root, depth + 1).dynamicInvoker();
       setTarget(MethodHandles.guardWithTest(test, adapted, fallback));
 
@@ -372,14 +328,12 @@ final class FunctionSupport {
 
     static MethodHandle getNoCaptureMH(PyFunction function) {
       var compiledEntry = getCompiledEntry(function.code);
-
       var bound = compiledEntry.bindTo(function);
-      return MethodHandles.dropArguments(bound, 0, Object.class)  // drop the callee
-          .withVarargs(compiledEntry.isVarargsCollector());  // if native
+      return MethodHandles.dropArguments(bound, 0, Object.class);  // drop the callee
     }
 
     static MethodHandle getEntry(PyFunction.Code code) {
-      var entry = code.entry;
+      var entry = code.entry;  // racy read
       if (entry != null) {
         return entry;
       }
@@ -388,7 +342,7 @@ final class FunctionSupport {
       var captureCount = code.captureCount();  // != 0
       var spread = compiledEntry.asSpreader(0, Object[].class, captureCount);     // (Object[], PyFunction, ...)
       entry = MethodHandles.foldArguments(spread, CAPTURED_ARGS);
-      code.entry = entry;
+      code.entry = entry;  // racy write
       return entry;
     }
 
@@ -398,15 +352,14 @@ final class FunctionSupport {
       if (compiledEntry != null) {
         return compiledEntry;
       }
-      if (code.isBuiltin()) {  // builtin function?
-        return code.compiledEntry = Builtins.resolve(code);  // volatile write
+      if (code.isBuiltin()) {
+        return code.compiledEntry = Builtins.resolve(code);  // idempotent, volatile write
       }
       synchronized (code) {
         compiledEntry = code.compiledEntry;  // volatile read
         if (compiledEntry != null) {
           return compiledEntry;
         }
-        // try to find if there is already a cached compiled entry
         compiledEntry = compileBody(code.context(), code.functionDef());
         code.compiledEntry = compiledEntry;  // volatile write
         return compiledEntry;
@@ -427,9 +380,6 @@ final class FunctionSupport {
 
       var dictionary = new Dictionary();
       var bytes = BytecodeGenerator.generateFunction(ctx, dictionary, def, scope);
-
-      //DEBUG
-      //CheckClassAdapter.verify(new ClassReader(bytes), true, new PrintWriter(System.err));
 
       var className = BytecodeGenerator.functionClassName(def).replace('/', '.');
       var clazz = RT.defineClass(ctx, dictionary, className, bytes);
@@ -452,8 +402,7 @@ final class FunctionSupport {
       throw new PyTypeError("'" + IntrinsicSupport.typeName(callee) + "' object is not callable");
     }
 
-    /// This method is duplicated in [PyFunction#checkArity]
-     static void checkArity(PyFunction function, int argCount) {
+    static void checkArity(PyFunction function, int argCount) {
       var arity = function.arity();
       if (function.code.isVariadic()) {
         if (argCount < arity) {
@@ -464,35 +413,43 @@ final class FunctionSupport {
       }
     }
 
-    /// Adapts the entry to `(X, Object x argCount) -> Object`.
+    /// Adapts the entry to `(X, Object x (arity + restCount)) -> Object`: the rest parameter, at `position`,
+    /// is replaced by `restCount` parameters (packed into a PyTuple for a Python function, into an Object[]
+    /// for a native one).
     static MethodHandle adapt(PyFunction function, MethodHandle entry, int position, int restCount) {
-      if (!function.code.hasRestParameter()) {
+      var code = function.code;
+      if (!code.isVariadic()) {
         return entry;  // exact arity: no adaptation at all
+      }
+      if (code.isBuiltin()) {
+        return entry.asCollector(position, Object[].class, restCount);
       }
       return RestAdapter.adapt(entry, position, restCount);
     }
 
-    /// Adapt the entry to permtute the keyword parameters
-    private MethodHandle adaptKeywords(PyFunction function, MethodHandle entry, MethodType type) {
+    /// Keyword reordering, shared by the polymorphic and megamorphic paths.
+    ///
+    /// Returns `plan` such that call-site argument `i` (callee excluded) goes to the slot `plan[i]`
+    /// of the canonical order: the declared parameters, then the extra positional arguments.
+    /// The canonical size is `max(positionalCount, arity)` and every slot is filled exactly once.
+    static int[] reorderKeywordArguments(PyFunction function, int positionalCount, String[] keywordNames) {
+      if (keywordNames.length != 0 && function.code.isBuiltin()) {
+        throw nativeKeywords(function);
+      }
       var parameters = function.parameters();
       var arity = parameters.size();
-      if (positionalCount > arity && !function.code.hasRestParameter()) {
+      if (positionalCount > arity && !function.code.isVariadic()) {
         throw tooManyPositional(function, positionalCount);
       }
 
-      var restCount = Math.max(0, positionalCount - arity);
-      var reorder = new int[1 + arity + restCount];
+      var plan = new int[positionalCount + keywordNames.length];
       var assigned = new boolean[arity];
-      // The callee stays at position zero.
-      reorder[0] = 0;
-
-      // Bind positional arguments.
-      for (var i = 0; i < Math.min(positionalCount, arity); i++) {
-        reorder[1 + i] = 1 + i;
-        assigned[i] = true;
+      for (var i = 0; i < positionalCount; i++) {
+        plan[i] = i;
+        if (i < arity) {
+          assigned[i] = true;
+        }
       }
-
-      // Bind keyword arguments.
       for (var i = 0; i < keywordNames.length; i++) {
         var name = keywordNames[i];
         var index = parameters.indexOf(name);
@@ -502,16 +459,15 @@ final class FunctionSupport {
         if (assigned[index]) {
           throw multipleValues(function, name);
         }
-        reorder[1 + index] = 1 + positionalCount + i;
         assigned[index] = true;
+        plan[positionalCount + i] = index;
       }
 
-      // Check missing arguments.
       var missing = (ArrayList<String>) null;
       for (var i = 0; i < arity; i++) {
         if (!assigned[i]) {
           if (missing == null) {
-            missing = new ArrayList<String>();
+            missing = new ArrayList<>();
           }
           missing.add(parameters.get(i));
         }
@@ -519,28 +475,34 @@ final class FunctionSupport {
       if (missing != null) {
         throw missingArguments(function, missing);
       }
+      return plan;
+    }
 
-      // Keep excess positional arguments in their original order.
-      for (var i = 0; i < restCount; i++) {
-        reorder[1 + arity + i] = 1 + arity + i;
+    /// Adapts the entry to the call site, permuting the arguments according to the plan.
+    private MethodHandle adaptKeywords(PyFunction function, MethodHandle entry, MethodType type, int[] plan) {
+      var arity = function.arity();
+      var restCount = Math.max(0, positionalCount - arity);
+
+      // reorder[j] = position in the call site of the j-th parameter of the adapted entry (the callee stays first)
+      var reorder = new int[1 + arity + restCount];
+      reorder[0] = 0;
+      for (var i = 0; i < plan.length; i++) {
+        reorder[1 + plan[i]] = 1 + i;
       }
 
-      // Adapt the compiled entry to canonical argument order.
-      var adapted = FunctionCallSite.adapt(function, entry, 1 + arity, restCount)
-          .asType(type);
-
+      var adapted = adapt(function, entry, 1 + arity, restCount).asType(type);
       return MethodHandles.permuteArguments(adapted, type, reorder);
     }
+
+
+    // -- errors
 
     private static PyTypeError arityError(PyFunction function, int given) {
       var arity = function.arity();
       if (given < arity) {
-        var missing = function.parameters().subList(given, arity);
-        return new PyTypeError(function.name() + "() missing " + missing.size()
-            + " required positional argument" + (missing.size() == 1 ? "" : "s") + ": " + joinNames(missing));
+        return missingArguments(function, function.parameters().subList(given, arity));
       }
-      return new PyTypeError(function.name() + "() takes " + arity + " positional argument"
-          + (arity == 1 ? "" : "s") + " but " + given + (given == 1 ? " was" : " were") + " given");
+      return tooManyPositional(function, given);
     }
 
     static String joinNames(List<String> names) {
@@ -557,38 +519,32 @@ final class FunctionSupport {
       };
     }
 
+    /// Fixed-arity natives are positional-only (as in CPython). Variadic natives accept keywords in CPython
+    /// (print(sep=...), int(x, base=...)) but we do not have keyword ABI for natives yet.
+    private static RuntimeException nativeKeywords(PyFunction function) {
+      if (function.code.isVariadic()) {
+        return new UnimplementedFeatureError("keyword arguments of the built-in function " + function.name() + "()");
+      }
+      return new PyTypeError(function.name() + "() takes no keyword arguments");
+    }
+
     private static PyTypeError unexpectedKeyword(PyFunction function, String name) {
-      return new PyTypeError(
-          function.name() +
-              "() got an unexpected keyword argument '" + name + "'"
-      );
+      return new PyTypeError(function.name() + "() got an unexpected keyword argument '" + name + "'");
     }
 
     private static PyTypeError multipleValues(PyFunction function, String name) {
-      return new PyTypeError(
-          function.name() +
-              "() got multiple values for argument '" + name + "'"
-      );
+      return new PyTypeError(function.name() + "() got multiple values for argument '" + name + "'");
     }
 
     private static PyTypeError missingArguments(PyFunction function, List<String> missing) {
-      return new PyTypeError(
-          function.name() + "() missing " +
-              missing.size() + " required positional argument" +
-              (missing.size() == 1 ? "" : "s") +
-              ": " + joinNames(missing)
-      );
+      return new PyTypeError(function.name() + "() missing " + missing.size() + " required positional argument"
+          + (missing.size() == 1 ? "" : "s") + ": " + joinNames(missing));
     }
 
     private static PyTypeError tooManyPositional(PyFunction function, int given) {
       var arity = function.arity();
-      return new PyTypeError(
-          function.name() + "() takes " +
-              arity + " positional argument" +
-              (arity == 1 ? "" : "s") +
-              " but " + given +
-              (given == 1 ? " was" : " were") + " given"
-      );
+      return new PyTypeError(function.name() + "() takes " + arity + " positional argument"
+          + (arity == 1 ? "" : "s") + " but " + given + (given == 1 ? " was" : " were") + " given");
     }
   }
 }

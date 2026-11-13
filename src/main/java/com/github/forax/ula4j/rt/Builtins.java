@@ -25,70 +25,77 @@ import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.UnsupportedCharsetException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-
-import static java.lang.invoke.MethodType.methodType;
 
 final class Builtins {
   private static final Object[] NO_CAPTURE_ARGS = new Object[0];
   private static final BigInteger MAX_ARRAY_SIZE = BigInteger.valueOf(Integer.MAX_VALUE - 8L);
 
-  private static final MethodHandles.Lookup LOOKUP;
-  static final Map<String, Object> BUILTINS;
+  private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+  static final HashMap<String, PyFunction> BUILTINS;
   static {
-    LOOKUP = MethodHandles.lookup();
-    BUILTINS = Map.ofEntries(
-        Map.entry("abs", newBuiltin("abs", List.of("x"), false)),
-        Map.entry("bytearray", newBuiltin("bytearray", List.of(), true)),
-        Map.entry("bin", newBuiltin("bin", List.of("x"), false)),
-        Map.entry("bool", newBuiltin("bool", List.of(), true)),
-        Map.entry("dict", newBuiltin("dict", List.of(), true)),
-        Map.entry("divmod", newBuiltin("divmod", List.of("a", "b"), false)),
-        Map.entry("hex", newBuiltin("hex", List.of("x"), false)),
-        Map.entry("int", newBuiltin("int", List.of(), true)),
-        Map.entry("len", newBuiltin("len", List.of("obj"), false)),
-        Map.entry("oct", newBuiltin("oct", List.of("x"), false)),
-        Map.entry("ord", newBuiltin("ord", List.of("c"), false)),
-        Map.entry("pow", newBuiltin("pow", List.of(), true)),
-        Map.entry("print", newBuiltin("print", List.of(), true)),
-        Map.entry("range", newBuiltin("range", List.of(), true)),
-        Map.entry("repr", newBuiltin("repr", List.of("obj"), false)),
-        Map.entry("round", newBuiltin("round", List.of(), true))
-    );
-  }
-
-  private static PyFunction newBuiltin(String name, List<String> parameters, boolean varargs) {
-    var code = new PyFunction.Code(name, parameters, varargs, 0, null, null);
-    return new PyFunction(code, NO_CAPTURE_ARGS);
-  }
-
-  public static MethodHandle resolve(PyFunction.Code code) {
-    var name = code.name();
-    return switch (name) {
-      case "print", "range", "pow", "round", "bytearray", "dict", "bool" ->
-          resolve(name, methodType(Object.class, PyFunction.class, Object[].class));
-      case "int" ->
-          resolve("int_", methodType(Object.class, PyFunction.class, Object[].class));
-      case "abs", "bin", "hex", "oct", "ord", "repr", "len" ->
-          resolve(name, methodType(Object.class, PyFunction.class, Object.class));
-      case "divmod" ->
-          resolve(name, methodType(Object.class, PyFunction.class, Object.class, Object.class));
-      default -> throw new AssertionError("unknown builtin " + name);
+    var codes = new PyFunction.Code[] {
+        fixed("abs", "x"),
+        variadic("bytearray"),
+        fixed("bin", "x"),
+        variadic("bool"),
+        variadic("dict"),
+        fixed("divmod", "a", "b"),
+        fixed("hex", "x"),
+        variadic("int"),
+        fixed("len", "obj"),
+        fixed("oct", "x"),
+        fixed("ord", "c"),
+        variadic("pow"),
+        variadic("print"),
+        variadic("range"),
+        fixed("repr", "obj"),
+        variadic("round")
     };
+    var builtins = new HashMap<String, PyFunction>();
+    for(var code : codes) {
+      builtins.put(code.name(), new PyFunction(code, NO_CAPTURE_ARGS));
+    }
+    BUILTINS = builtins;
   }
 
-  private static MethodHandle resolve(String name, MethodType methodType) {
+  private static PyFunction.Code fixed(String name, String... parameters) {
+    return new PyFunction.Code(name, List.of(parameters), false, 0, null, null);
+  }
+
+  private static PyFunction.Code variadic(String name) {
+    return new PyFunction.Code(name, List.of(), true, 0, null, null);
+  }
+
+  /// The entry of a builtin: always a fixed-arity handle. For a variadic builtin the last parameter
+  /// is an Object[] that call sites fill explicitly (never through the varargs-collector bit).
+  static MethodHandle resolve(PyFunction.Code code) {
     try {
-      return LOOKUP.findStatic(Builtins.class, name, methodType);
+      return LOOKUP.findStatic(Builtins.class, "_" + code.name() + "_", type(code)).asFixedArity();
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new AssertionError(e);
     }
   }
 
+  private static MethodType type(PyFunction.Code code) {
+    var types = new ArrayList<Class<?>>();
+    types.add(PyFunction.class);
+    for (var _ : code.parameters()) {
+      types.add(Object.class);
+    }
+    if (code.isVariadic()) {
+      types.add(Object[].class);
+    }
+    return MethodType.methodType(Object.class, types);
+  }
+
+
   // -- Builtins
 
-  public static Object print(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _print_(PyFunction func, Object... args) {
     var builder = new StringBuilder();
     var separator = "";
     for (var arg : args) {
@@ -102,7 +109,8 @@ final class Builtins {
 
   /// A range is currently materialized as a list because the runtime does not yet
   /// have a dedicated immutable range type or a range iterator.
-  public static Object range(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _range_(PyFunction func, Object... args) {
     requireCount("range", args.length, 1, 3);
     BigInteger start;
     BigInteger stop;
@@ -120,7 +128,7 @@ final class Builtins {
       throw new PyValueError("range() arg 3 must not be zero");
     }
 
-    BigInteger count = BigInteger.ZERO;
+    var count = BigInteger.ZERO;
     if (step.signum() > 0 && start.compareTo(stop) < 0) {
       count = stop.subtract(start).subtract(BigInteger.ONE).divide(step).add(BigInteger.ONE);
     } else if (step.signum() < 0 && start.compareTo(stop) > 0) {
@@ -130,7 +138,7 @@ final class Builtins {
       throw new UnimplementedFeatureError("range larger than the maximum Java array size");
     }
 
-    var result = new PyList<Object>(count.intValue());
+    var result = new PyList<>(count.intValue());
     var value = start;
     for (var i = 0; i < count.intValue(); i++) {
       result.append(normalizeInt(value));
@@ -139,7 +147,8 @@ final class Builtins {
     return result;
   }
 
-  public static Object abs(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _abs_(PyFunction func, Object value) {
     return switch (value) {
       case Boolean b -> b ? 1L : 0L;
       case Long l -> l == Long.MIN_VALUE ? BigInteger.valueOf(l).negate() : Math.abs(l);
@@ -149,19 +158,23 @@ final class Builtins {
     };
   }
 
-  public static Object bin(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _bin_(PyFunction func, Object value) {
     return formatInteger(value, 2, "0b");
   }
 
-  public static Object hex(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _hex_(PyFunction func, Object value) {
     return formatInteger(value, 16, "0x");
   }
 
-  public static Object oct(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _oct_(PyFunction func, Object value) {
     return formatInteger(value, 8, "0o");
   }
 
-  public static Object pow(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _pow_(PyFunction func, Object... args) {
     requireCount("pow", args.length, 2, 3);
     if (args.length == 2) {
       return ArithmeticIntrinsics.$pow$(args[0], args[1]);
@@ -191,7 +204,8 @@ final class Builtins {
     }
   }
 
-  public static Object round(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _round_(PyFunction func, Object... args) {
     requireCount("round", args.length, 1, 2);
     var value = args[0];
     var hasNdigits = args.length == 2 && args[1] != PyNone.INSTANCE;
@@ -208,7 +222,8 @@ final class Builtins {
 
   /// A bytearray is represented by PyList<long> for now. Each element is an unsigned
   /// byte in the range 0..255; this keeps it iterable and mutable with the current runtime.</long>
-  public static Object bytearray(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _bytearray_(PyFunction func, Object... args) {
     if (args.length > 3) {
       throw new PyTypeError("bytearray() takes at most 3 arguments (" + args.length + " given)");
     }
@@ -272,7 +287,8 @@ final class Builtins {
     return result;
   }
 
-  public static Object ord(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _ord_(PyFunction func, Object value) {
     if (!(value instanceof String string)) {
       throw new PyTypeError("ord() expected string of length 1, but " + typeName(value) + " found");
     }
@@ -283,9 +299,10 @@ final class Builtins {
     return (long) string.codePointAt(0);
   }
 
-  public static Object dict(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _dict_(PyFunction func, Object... args) {
     requireCount("dict", args.length, 0, 1);
-    var result = new PyDict<Object, Object>();
+    var result = new PyDict<>();
     if (args.length == 0) {
       return result;
     }
@@ -318,12 +335,14 @@ final class Builtins {
     return result;
   }
 
-  public static Object bool(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _bool_(PyFunction func, Object... args) {
     requireCount("bool", args.length, 0, 1);
     return Boolean.valueOf(args.length != 0 && TruthinessIntrinsics.$truthy$(args[0]));
   }
 
-  public static Object int_(PyFunction func, Object... args) {
+  @SuppressWarnings("unused")
+  public static Object _int_(PyFunction func, Object... args) {
     requireCount("int", args.length, 0, 2);
     if (args.length == 0) {
       return 0L;
@@ -359,11 +378,13 @@ final class Builtins {
     };
   }
 
-  public static Object repr(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _repr_(PyFunction func, Object value) {
     return StringIntrinsics.$repr$(value);
   }
 
-  public static Object len(PyFunction func, Object value) {
+  @SuppressWarnings("unused")
+  public static Object _len_(PyFunction func, Object value) {
     return switch (value) {
       case String string -> (long) string.codePointCount(0, string.length());
       case PyTuple tuple -> TupleIntrinsics.$size$(tuple);
@@ -373,7 +394,8 @@ final class Builtins {
     };
   }
 
-  public static Object divmod(PyFunction func, Object a, Object b) {
+  @SuppressWarnings("unused")
+  public static Object _divmod_(PyFunction func, Object a, Object b) {
     if (!isNumeric(a) || !isNumeric(b)) {
       throw new PyTypeError(
           "unsupported operand type(s) for divmod(): '"
@@ -393,6 +415,7 @@ final class Builtins {
 
     return TupleIntrinsics.fromArray(quotient, remainder);
   }
+
 
   // -- Helpers
 

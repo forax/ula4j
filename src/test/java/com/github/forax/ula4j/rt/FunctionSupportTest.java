@@ -5,6 +5,7 @@ import com.github.forax.ula4j.compiler.Compiler;
 import com.github.forax.ula4j.rt.error.PyNameError;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.error.PyZeroDivisionError;
+import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,6 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -318,8 +318,10 @@ public final class FunctionSupportTest {
   }
 
 
-  /*private enum CallShape {
+  private enum CallShape {
     POSITIONAL, KEYWORDS, MIXED;
+
+    static final List<CallShape> ALL = List.of(POSITIONAL, KEYWORDS, MIXED);
 
     String invocation() {
       return switch (this) {
@@ -329,7 +331,7 @@ public final class FunctionSupportTest {
       };
     }
 
-    String invocation(String callee) {
+    String invocationWithCallee(String callee) {
       return invocation().replace("fn(", callee + "(");
     }
 
@@ -348,56 +350,7 @@ public final class FunctionSupportTest {
         case MIXED -> i % 2 == 0 ? "a, b, c" : "a, c, b";
       };
     }
-  }*/
-
-
-  private enum CallShape {
-    POSITIONAL {
-      @Override String invocation() {
-        return "fn(1, 2, 3)";
-      }
-
-      @Override String parameters(int i) {
-        return "a, b, c";
-      }
-    },
-
-    KEYWORDS {
-      @Override String invocation() {
-        return "fn(c=3, a=1, b=2)";
-      }
-
-      @Override String parameters(int i) {
-        return switch (i % 6) {
-          case 0 -> "a, b, c";
-          case 1 -> "c, a, b";
-          case 2 -> "b, c, a";
-          case 3 -> "c, b, a";
-          case 4 -> "b, a, c";
-          default -> "a, c, b";
-        };
-      }
-    },
-
-    MIXED {
-      @Override String invocation() {
-        return "fn(1, c=3, b=2)";
-      }
-
-      @Override String parameters(int i) {
-        // Keep 'a' first because the first argument is positional.
-        return i % 2 == 0 ? "a, b, c" : "a, c, b";
-      }
-    };
-
-    abstract String invocation();
-    abstract String parameters(int i);
-
-    String invocation(String callee) {
-      return invocation().replace("fn(", callee + "(");
-    }
   }
-
 
 
   private static String keywordDispatchSource(int n, boolean captured, CallShape shape, boolean warm) {
@@ -432,7 +385,7 @@ public final class FunctionSupportTest {
       for (var i = 0; i < n; i++) {
         var callee = captured ? "c" + i : "f" + i;
         builder.append("w").append(i).append(" = ")
-            .append(shape.invocation(callee)).append('\n');
+            .append(shape.invocationWithCallee(callee)).append('\n');
       }
     }
 
@@ -450,8 +403,7 @@ public final class FunctionSupportTest {
     return builder.toString();
   }
 
-  private static void checkKeywordDispatch(int n, boolean captured, CallShape shape, boolean warm
-  ) {
+  private static void checkKeywordDispatch(int n, boolean captured, CallShape shape, boolean warm) {
     var module = run(keywordDispatchSource(n, captured, shape, warm));
 
     for (var round = 0; round < 3; round++) {
@@ -465,6 +417,15 @@ public final class FunctionSupportTest {
         assertGlobal(module, "w" + i, 123L + 1000L * i);
       }
     }
+  }
+
+  private static String nativeKeywordSource(int warmCallees, String nativeCall) {
+    var b = new StringBuilder("def apply(fn):\n    return fn(1, x=2)\n");
+    for (var i = 0; i < warmCallees; i++) {
+      b.append("def f").append(i).append("(a, x):\n    return a + x + ").append(i).append('\n');
+      b.append("apply(f").append(i).append(")\n");
+    }
+    return b.append(nativeCall).toString();
   }
 
 
@@ -481,7 +442,7 @@ public final class FunctionSupportTest {
       assertEquals("f", f.name());
       assertEquals(List.of("a", "b"), f.parameters());
       assertEquals(2, f.arity());
-      assertFalse(f.varargs());
+      assertFalse(f.isVariadic());
       assertEquals("<function f>", f.toString());
     }
 
@@ -494,7 +455,7 @@ public final class FunctionSupportTest {
       var f = assertInstanceOf(PyFunction.class, module.getGlobal("f"));
       assertEquals(List.of("a"), f.parameters());
       assertEquals(1, f.arity());
-      assertTrue(f.varargs());
+      assertTrue(f.isVariadic());
     }
 
     @Test
@@ -506,7 +467,7 @@ public final class FunctionSupportTest {
       var f = assertInstanceOf(PyFunction.class, module.getGlobal("f"));
       assertEquals(0, f.arity());
       assertTrue(f.parameters().isEmpty());
-      assertTrue(f.varargs());
+      assertTrue(f.isVariadic());
     }
 
     @Test
@@ -595,6 +556,22 @@ public final class FunctionSupportTest {
       var module = run(source);
       assertSame(module.getGlobal("f"), module.getGlobal("h"));
       assertGlobal(module, "r", 2L);
+    }
+  }
+
+
+  @Nested
+  public final class Arity {
+    @Test
+    public void arityIsCheckedBeforeTheCalleeIsCompiled() {
+      // 'broken' reads a local before assignment: a semantic error if the body were compiled
+      var source = """
+      def broken(a):
+          return b
+          b = 1
+      broken(1, 2)
+      """;
+      assertEquals("broken() takes 1 positional argument but 2 were given", assertTypeErrorMessage(source));
     }
   }
 
@@ -2144,7 +2121,7 @@ public final class FunctionSupportTest {
     @Test
     public void monomorphic() {
       for (var captured : List.of(false, true)) {
-        for (var shape : CallShape.values()) {
+        for (var shape : CallShape.ALL) {
           checkKeywordDispatch(1, captured, shape, false);
           checkKeywordDispatch(1, captured, shape, true);
         }
@@ -2154,7 +2131,7 @@ public final class FunctionSupportTest {
     @Test
     public void polymorphic() {
       for (var captured : List.of(false, true)) {
-        for (var shape : CallShape.values()) {
+        for (var shape : CallShape.ALL) {
           checkKeywordDispatch(4, captured, shape, false);
           checkKeywordDispatch(4, captured, shape, true);
         }
@@ -2164,11 +2141,36 @@ public final class FunctionSupportTest {
     @Test
     public void megamorphic() {
       for (var captured : List.of(false, true)) {
-        for (var shape : CallShape.values()) {
+        for (var shape : CallShape.ALL) {
           checkKeywordDispatch(8, captured, shape, false);
           checkKeywordDispatch(8, captured, shape, true);
         }
       }
+    }
+
+    @ParameterizedTest(name = "{0} callees seen before")
+    @ValueSource(ints = {0, 1, 4, 5, 8})
+    public void keywordsOnAFixedArityNative(int n) {
+      assertEquals("abs() takes no keyword arguments",
+          assertTypeErrorMessage(nativeKeywordSource(n, "apply(abs)\n")));
+    }
+
+    @ParameterizedTest(name = "{0} callees seen before")
+    @ValueSource(ints = {0, 1, 4, 5, 8})
+    public void keywordsOnAVariadicNative(int n) {
+      assertThrows(UnimplementedFeatureError.class,
+          () -> Compiler.run(nativeKeywordSource(n, "apply(print)\n")));
+    }
+
+    @ParameterizedTest(name = "{0} callees seen before")
+    @ValueSource(ints = {0, 1, 4, 5, 8})
+    public void tooManyPositionalWithKeywordsIsTheSameEverywhere(int n) {
+      var source = nativeKeywordSource(n, """
+      def one(a):
+          return a
+      apply(one)
+      """);
+      assertEquals("one() got an unexpected keyword argument 'x'", assertTypeErrorMessage(source));
     }
   }
 
