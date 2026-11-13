@@ -6,6 +6,7 @@ import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.RandomAccess;
 
 /// Mutable Python-list storage.
 ///
@@ -166,7 +167,7 @@ public final class PyList<E> {
   // -- Java API
 
   public List<E> asJavaList() {
-    return new AbstractList<E>() {
+    final class JavaList extends AbstractList<E> implements RandomAccess {
       @Override
       public int size() {
         return size;
@@ -177,7 +178,8 @@ public final class PyList<E> {
         Objects.checkIndex(index, size);
         return elements[index];
       }
-    };
+    }
+    return new JavaList();
   }
 
 
