@@ -419,13 +419,13 @@ public final class FunctionSupportTest {
     }
   }
 
-  private static String nativeKeywordSource(int warmCallees, String nativeCall) {
+  private static String builtinKeywordSource(int warmCallees, String builtinCall) {
     var b = new StringBuilder("def apply(fn):\n    return fn(1, x=2)\n");
     for (var i = 0; i < warmCallees; i++) {
       b.append("def f").append(i).append("(a, x):\n    return a + x + ").append(i).append('\n');
       b.append("apply(f").append(i).append(")\n");
     }
-    return b.append(nativeCall).toString();
+    return b.append(builtinCall).toString();
   }
 
 
@@ -2150,22 +2150,22 @@ public final class FunctionSupportTest {
 
     @ParameterizedTest(name = "{0} callees seen before")
     @ValueSource(ints = {0, 1, 4, 5, 8})
-    public void keywordsOnAFixedArityNative(int n) {
+    public void keywordsOnAFixedArityBuiltin(int n) {
       assertEquals("abs() takes no keyword arguments",
-          assertTypeErrorMessage(nativeKeywordSource(n, "apply(abs)\n")));
+          assertTypeErrorMessage(builtinKeywordSource(n, "apply(abs)\n")));
     }
 
     @ParameterizedTest(name = "{0} callees seen before")
     @ValueSource(ints = {0, 1, 4, 5, 8})
-    public void keywordsOnAVariadicNative(int n) {
+    public void keywordsOnAVariadicBuiltin(int n) {
       assertThrows(UnimplementedFeatureError.class,
-          () -> Compiler.run(nativeKeywordSource(n, "apply(print)\n")));
+          () -> Compiler.run(builtinKeywordSource(n, "apply(print)\n")));
     }
 
     @ParameterizedTest(name = "{0} callees seen before")
     @ValueSource(ints = {0, 1, 4, 5, 8})
     public void tooManyPositionalWithKeywordsIsTheSameEverywhere(int n) {
-      var source = nativeKeywordSource(n, """
+      var source = builtinKeywordSource(n, """
       def one(a):
           return a
       apply(one)
