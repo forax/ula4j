@@ -171,6 +171,45 @@ public final class PyList<E> extends AbstractList<E> {
   }
 
   @Override
+  public boolean contains(Object o) {
+    Objects.requireNonNull(o);
+    return indexOf(o) >= 0;
+  }
+
+  @Override
+  public int indexOf(Object o) {
+    Objects.requireNonNull(o);
+    for (var i = 0; i < size; i++) {
+      var element = elements[i];
+      if (element == o || ComparisonIntrinsics.$eq$(element, o)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  @Override
+  public int lastIndexOf(Object o) {
+    for (var i = size - 1; i >= 0; i--) {
+      var element = elements[i];
+      if (element == o || ComparisonIntrinsics.$eq$(element, o)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  @Override
+  public boolean remove(Object o) {
+    var index = indexOf(o);
+    if (index < 0) {
+      return false;
+    }
+    remove(index);
+    return true;
+  }
+
+  @Override
   public boolean equals(Object o) {
     Objects.requireNonNull(o);
     return ComparisonIntrinsics.$eq$(this, o);

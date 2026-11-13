@@ -201,6 +201,25 @@ public final class PyDict<K,V> implements Map<K,V> {
       }
 
       @Override
+      public boolean contains(Object o) {
+        Objects.requireNonNull(o);
+        if (!(o instanceof Entry<?,?> entry)) {
+          return false;
+        }
+        var value = get(entry.getValue());
+        return value != null;
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        Objects.requireNonNull(o);
+        if (!(o instanceof Entry<?,?> entry)) {
+          return false;
+        }
+        return PyDict.this.remove(entry.getKey(), entry.getValue());
+      }
+
+      @Override
       public Iterator<Entry<K, V>> iterator() {
         var keysVersion = PyDict.this.keysVersion;
         return new Iterator<>() {
@@ -228,9 +247,38 @@ public final class PyDict<K,V> implements Map<K,V> {
             if (keysVersion != PyDict.this.keysVersion) {
               throw new ConcurrentModificationException();
             }
-            var entry =  Map.entry(keys[index], values[index]);
+            var key = keys[index];
+            var value = values[index];
+            final class Entry implements Map.Entry<K, V> {
+              @Override
+              public K getKey() {
+                return key;
+              }
+              @Override
+              public V getValue() {
+                return value;
+              }
+              @Override
+              public V setValue(V value) {
+                throw new UnsupportedOperationException();
+              }
+
+              @Override
+              public int hashCode() {
+                return Long.hashCode(
+                    HashingIntrinsics.$hash$(key) ^ HashingIntrinsics.$hash$(value));
+              }
+
+              @Override
+              public boolean equals(Object obj) {
+                Object entryKey, entryValue;
+                return obj instanceof Map.Entry<?,?> entry &&
+                    key == (entryKey = entry.getKey()) && ComparisonIntrinsics.$eq$(key, entryKey) &&
+                    value == (entryValue = entry.getValue()) && ComparisonIntrinsics.$eq$(value, entryValue);
+              }
+            }
             index =  nextIndex(index + 1);
-            return entry;
+            return new Entry();
           }
         };
       }
@@ -260,6 +308,51 @@ public final class PyDict<K,V> implements Map<K,V> {
   }
 
   @Override
+  public boolean remove(Object key, Object value) {
+    Objects.requireNonNull(key);
+    Objects.requireNonNull(value);
+    var hash = HashingIntrinsics.$hash$(key);
+    var slot = findSlot(key, hash);
+    var slotValue = table[slot];
+    int entry;
+    V entryValue;
+    if (slotValue <= 0 ||
+        (entryValue = values[entry = slotValue - 1]) != value ||
+        !ComparisonIntrinsics.$eq$(entryValue, value)) {
+      return false;
+    }
+
+    table[slot] = DELETED;
+    keys[entry] = null;
+    values[entry] = null;
+    hashes[entry] = 0L;
+    size--;
+    keysVersion++;
+
+    compactIfSparse();
+    return true;
+  }
+
+  @Override
+  public boolean replace(K key, V oldValue, V newValue) {
+    Objects.requireNonNull(key);
+    Objects.requireNonNull(oldValue);
+    Objects.requireNonNull(newValue);
+    var hash = HashingIntrinsics.$hash$(key);
+    var slot = findSlot(key, hash);
+    var slotValue = table[slot];
+    int entry ;
+    V entryValue;
+    if (slotValue <= 0 ||
+        (entryValue = values[entry = slotValue - 1]) != oldValue ||
+        !ComparisonIntrinsics.$eq$(entryValue, oldValue)) {
+      return false;
+    }
+    values[entry] = newValue;
+    return true;
+  }
+
+  @Override
   public void putAll(Map<? extends K, ? extends V> map) {
     Objects.requireNonNull(map);
     map.forEach(this::put);
@@ -271,6 +364,18 @@ public final class PyDict<K,V> implements Map<K,V> {
       @Override
       public int size() {
         return size;
+      }
+
+      @Override
+      public boolean contains(Object o) {
+        Objects.requireNonNull(o);
+        return containsKey(o);
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        Objects.requireNonNull(o);
+        return PyDict.this.remove(o) != null;
       }
 
       @Override
@@ -316,6 +421,32 @@ public final class PyDict<K,V> implements Map<K,V> {
       @Override
       public int size() {
         return size;
+      }
+
+      @Override
+      public boolean contains(Object o) {
+        Objects.requireNonNull(o);
+        return containsValue(o);
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        Objects.requireNonNull(o);
+        for(var i = 0; i < entryCount; i++) {
+          var value = values[i];
+          if (value == o || (value != null && ComparisonIntrinsics.$eq$(value, o))) {
+            table[i] = DELETED;
+            keys[i] = null;
+            values[i] = null;
+            hashes[i] = 0L;
+            size--;
+            keysVersion++;
+
+            compactIfSparse();
+            return true;
+          }
+        }
+        return false;
       }
 
       @Override
@@ -407,8 +538,8 @@ public final class PyDict<K,V> implements Map<K,V> {
       return;
     }
 
-    // If live entries themselves exceed the threshold, grow. Otherwise remove tombstones by
-    // rehashing at the same capacity.
+    // If live entries themselves exceed the threshold, grow.
+    // Otherwise, remove tombstones by rehashing at the same capacity.
     if (size + 1 > maxFill(table.length)) {
       if (table.length == MAX_TABLE_CAPACITY) {
         throw tooLarge();
