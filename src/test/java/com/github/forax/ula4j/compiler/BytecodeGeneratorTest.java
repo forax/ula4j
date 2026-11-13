@@ -1537,16 +1537,6 @@ public final class BytecodeGeneratorTest {
     }
 
     @Test
-    public void duplicateKeywordArgumentRaisesTypeError() {
-      var source = """
-            def f(a):
-                return a
-            r = f(a=1, a=2)
-            """;
-      assertThrows(PyTypeError.class, () -> Compiler.run(source));
-    }
-
-    @Test
     public void missingRequiredKeywordArgumentRaisesTypeError() {
       var source = """
             def f(a, b):

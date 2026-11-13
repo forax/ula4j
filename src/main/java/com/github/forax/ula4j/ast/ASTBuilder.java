@@ -823,6 +823,15 @@ public final class ASTBuilder {
         default -> { }  // commas
       }
     }
+
+    var seen = new HashSet<String>();
+    for (var keyword : keywords) {
+      if (!seen.add(keyword.name())) {
+        throw new SyntaxErrorException("keyword argument repeated: '" + keyword.name() + "'",
+            keyword.line(), keyword.column());
+      }
+    }
+
     return new Expr.CallArguments(positional, keywords);
   }
 

@@ -1916,17 +1916,6 @@ public final class FunctionSupportTest {
     }
 
     @Test
-    public void duplicateKeyword() {
-      assertEquals(
-          "f() got multiple values for argument 'a'",
-          assertTypeErrorMessage("""
-          def f(a, b):
-              return a
-          f(a=1, a=2)
-          """));
-    }
-
-    @Test
     public void missingArgumentWithKeywords() {
       assertEquals(
           "f() missing 1 required positional argument: 'b'",
