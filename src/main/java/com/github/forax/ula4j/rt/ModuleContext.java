@@ -5,6 +5,7 @@ import com.github.forax.ula4j.compiler.ScopeAnalyzer;
 import com.github.forax.ula4j.compiler.ScopeAnalyzer.FunctionScope;
 import com.github.forax.ula4j.rt.error.PyNameError;
 
+import java.lang.invoke.SwitchPoint;
 import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,30 +13,56 @@ import java.util.concurrent.ConcurrentHashMap;
 /// Everything a module owns: global cells, builtins, the registered functions and their compiled bodies.
 public final class ModuleContext {
 
-  /// A module-level name. `null` means unbound.
   static final class GlobalCell {
+    record ResolvedCell(Object value, SwitchPoint switchPoint) {}
+
     private final String name;
     private volatile Object value;
 
-    private GlobalCell(String name) {
+    // guarded by this, null until the value is set
+    private SwitchPoint switchPoint;
+
+    private GlobalCell(String name, Object value) {
       this.name = name;
+      this.value = value;
       super();
     }
 
+    /// Slow path: always correct, whatever the state of the cell.
     public Object get() {
-      var value = this.value;
+      var value = this.value;  // volatile read
       if (value != null) {
         return value;
-      }
-      var builtinValue = Builtins.BUILTINS.get(name);
-      if (builtinValue != null) {
-        return builtinValue;
       }
       throw new PyNameError("name '" + name + "' is not defined");
     }
 
-    public void set(Object value) {
-      this.value = Objects.requireNonNull(value);
+    public void set(Object newValue) {
+      Objects.requireNonNull(newValue);
+      synchronized (this) {
+        // invalidate switch point if it exists
+        var switchPoint = this.switchPoint;
+        if (switchPoint != null) {
+          SwitchPoint.invalidateAll(new SwitchPoint[] { switchPoint });
+          this.switchPoint = null;
+        }
+        this.value = newValue;  // volatile write
+      }
+    }
+
+    /// The value to embed as a constant, or null if the cell can not (or no longer) be treated
+    /// as a constant: unbound (reading it raises NameError) or already unstable.
+    ResolvedCell resolveCell() {
+      synchronized (this) {
+        var value = this.value;  // volatile read
+        if (value == null) {
+          return null;
+        }
+        if (switchPoint == null) {
+          switchPoint = new SwitchPoint();
+        }
+        return new ResolvedCell(value, switchPoint);
+      }
     }
   }
 
@@ -53,7 +80,8 @@ public final class ModuleContext {
   // ---- globals
 
   GlobalCell cell(String name) {
-    return globals.computeIfAbsent(name, GlobalCell::new);
+    return globals.computeIfAbsent(name,
+        n -> new GlobalCell(n, Builtins.BUILTINS.get(n)));
   }
 
   public Object getGlobal(String name) {

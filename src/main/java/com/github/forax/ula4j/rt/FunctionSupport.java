@@ -42,11 +42,64 @@ final class FunctionSupport {
 
   // ---- globals
 
+  /// A read of a global.
   static CallSite getGlobal(ModuleContext context, String name) {
     var cell = context.cell(name);
-    return new ConstantCallSite(CELL_GET.bindTo(cell));
+    var resolvedCell = cell.resolveCell();
+    if (resolvedCell == null) {  // no value, no backup bindings
+      return new ConstantCallSite(CELL_GET.bindTo(cell));
+    }
+    // From that point on, the value will never be null
+    return new GetGlobalCallSite(cell);
   }
 
+  private static final class GetGlobalCallSite extends MutableCallSite {
+    private static final MethodType TYPE;
+    private static final MethodHandle FALLBACK;
+    static {
+      var lookup = MethodHandles.lookup();
+      TYPE = MethodType.methodType(Object.class);
+      try {
+        FALLBACK = lookup.findVirtual(GetGlobalCallSite.class, "fallback",
+            MethodType.methodType(Object.class));
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new AssertionError(e);
+      }
+    }
+
+    private static final int MAX_COUNTER = 2;
+
+    private final ModuleContext.GlobalCell cell;
+    private int counter;
+
+    GetGlobalCallSite(ModuleContext.GlobalCell cell) {
+      this.cell = cell;
+      super(TYPE);
+      setTarget(FALLBACK.bindTo(this));
+    }
+
+    private Object fallback() {
+      var counter = this.counter;
+      if (counter >= MAX_COUNTER) {
+        setTarget(CELL_GET.bindTo(cell));
+        return cell.get();
+      }
+      this.counter = counter + 1;
+
+      var resolvedCell = cell.resolveCell();
+      if (resolvedCell == null) {
+        throw new AssertionError("the value has already been observed as non-null");
+      }
+      var value = resolvedCell.value();
+      var constant = MethodHandles.constant(Object.class, value);
+      var target = resolvedCell.switchPoint().guardWithTest(constant, FALLBACK.bindTo(this));
+      setTarget(target);
+
+      return value;
+    }
+  }
+
+  /// A store to a global.
   static CallSite setGlobal(ModuleContext context, String name) {
     var cell = context.cell(name);
     return new ConstantCallSite(CELL_SET.bindTo(cell));
