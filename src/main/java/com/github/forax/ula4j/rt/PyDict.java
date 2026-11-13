@@ -5,9 +5,10 @@ import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
 import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
 
-import java.util.AbstractMap;
+import java.util.AbstractCollection;
 import java.util.AbstractSet;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.Map;
@@ -28,7 +29,7 @@ import java.util.Set;
 ///
 /// Not thread-safe. Like the other mutable runtime containers, synchronization is the caller's
 /// responsibility.
-public final class PyDict<K,V> extends AbstractMap<K,V> {
+public final class PyDict<K,V> implements Map<K,V> {
   private static final int EMPTY = 0;
   private static final int DELETED = -1;
   private static final int MIN_TABLE_CAPACITY = 8;
@@ -230,6 +231,124 @@ public final class PyDict<K,V> extends AbstractMap<K,V> {
             var entry =  Map.entry(keys[index], values[index]);
             index =  nextIndex(index + 1);
             return entry;
+          }
+        };
+      }
+    };
+  }
+
+
+  @Override
+  public V getOrDefault(Object key, V defaultValue) {
+    Objects.requireNonNull(key);
+    var hash = HashingIntrinsics.$hash$(key);
+    var slot = findSlot(key, hash);
+    var entry = table[slot] - 1;
+    return entry < 0 ? defaultValue : values[entry];
+  }
+
+  @Override
+  public boolean containsValue(Object value) {
+    Objects.requireNonNull(value);
+    for(var i = 0; i < entryCount; i++) {
+      var element = values[i];
+      if (element == value || (element != null && ComparisonIntrinsics.$eq$(element, value))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  public void putAll(Map<? extends K, ? extends V> map) {
+    Objects.requireNonNull(map);
+    map.forEach(this::put);
+  }
+
+  @Override
+  public Set<K> keySet() {
+    return new AbstractSet<>() {
+      @Override
+      public int size() {
+        return size;
+      }
+
+      @Override
+      public Iterator<K> iterator() {
+        var keysVersion = PyDict.this.keysVersion;
+        return new Iterator<>() {
+          private int index = nextIndex(0);
+
+          private int nextIndex(int index) {
+            for(;index < entryCount; index++) {
+              if (keys[index] != null) {
+                return index;
+              }
+            }
+            return index;  // == entryCount
+          }
+
+          @Override
+          public boolean hasNext() {
+            return index < entryCount;
+          }
+
+          @Override
+          public K next() {
+            if (!hasNext()) {
+              throw new NoSuchElementException();
+            }
+            if (keysVersion != PyDict.this.keysVersion) {
+              throw new ConcurrentModificationException();
+            }
+            var key =  keys[index];
+            index =  nextIndex(index + 1);
+            return key;
+          }
+        };
+      }
+    };
+  }
+
+  @Override
+  public Collection<V> values() {
+    return new AbstractCollection<>() {
+      @Override
+      public int size() {
+        return size;
+      }
+
+      @Override
+      public Iterator<V> iterator() {
+        var keysVersion = PyDict.this.keysVersion;
+        return new Iterator<>() {
+          private int index = nextIndex(0);
+
+          private int nextIndex(int index) {
+            for(;index < entryCount; index++) {
+              if (values[index] != null) {
+                return index;
+              }
+            }
+            return index;  // == entryCount
+          }
+
+          @Override
+          public boolean hasNext() {
+            return index < entryCount;
+          }
+
+          @Override
+          public V next() {
+            if (!hasNext()) {
+              throw new NoSuchElementException();
+            }
+            if (keysVersion != PyDict.this.keysVersion) {
+              throw new ConcurrentModificationException();
+            }
+            var value =  values[index];
+            index =  nextIndex(index + 1);
+            return value;
           }
         };
       }
