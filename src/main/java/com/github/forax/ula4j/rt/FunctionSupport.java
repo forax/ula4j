@@ -102,7 +102,7 @@ final class FunctionSupport {
       }
 
       static final MethodHandle MEGAMORPHIC, MEGAMORPHIC_WITH_KEYWORDS;
-      private static final MethodHandle ARRAY_ELEMENT, REST_TUPLE, NATIVE_REST;
+      private static final MethodHandle ARRAY_ELEMENT, REST_TUPLE, BUILTIN_REST;
       static {
         var lookup = MethodHandles.lookup();
         ARRAY_ELEMENT = MethodHandles.arrayElementGetter(Object[].class);
@@ -113,7 +113,7 @@ final class FunctionSupport {
               MethodType.methodType(Object.class, Object.class, Object[].class, int.class, String[].class));
           REST_TUPLE = lookup.findStatic(Megamorphic.class, "restTuple",
               MethodType.methodType(PyTuple.class, Object[].class, int.class));
-          NATIVE_REST = lookup.findStatic(Megamorphic.class, "builtinRest",
+          BUILTIN_REST = lookup.findStatic(Megamorphic.class, "builtinRest",
               MethodType.methodType(Object[].class, Object[].class, int.class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
@@ -169,7 +169,7 @@ final class FunctionSupport {
 
         // 3. Rest parameter (a PyTuple for Python code, an Object[] for a builtin):
         //    read the declared parameters one by one and pack the remaining arguments.
-        var packer = code.isBuiltin() ? NATIVE_REST : REST_TUPLE;
+        var packer = code.isBuiltin() ? BUILTIN_REST : REST_TUPLE;
         var filters = new MethodHandle[arity + 1];
         for (var i = 0; i < arity; i++) {
           filters[i] = MethodHandles.insertArguments(ARRAY_ELEMENT, 1, i);
