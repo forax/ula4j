@@ -2,6 +2,7 @@ package com.github.forax.ula4j.rt;
 
 import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
+import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 
 import java.util.AbstractList;
 import java.util.Arrays;
@@ -171,7 +172,8 @@ public final class PyList<E> extends AbstractList<E> {
 
   @Override
   public boolean equals(Object o) {
-    throw unhashable();
+    Objects.requireNonNull(o);
+    return ComparisonIntrinsics.$eq$(this, o);
   }
 
   @Override

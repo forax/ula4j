@@ -238,7 +238,8 @@ public final class PyDict<K,V> extends AbstractMap<K,V> {
 
   @Override
   public boolean equals(Object o) {
-    throw unhashable();
+    Objects.requireNonNull(o);
+    return ComparisonIntrinsics.$eq$(this, o);
   }
 
   @Override
