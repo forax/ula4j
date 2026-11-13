@@ -6,30 +6,21 @@ import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
 
 import java.util.AbstractCollection;
+import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 
 /// Mutable, insertion-ordered Python-dictionary storage.
-///
-/// This class deliberately does not implement `java.util.Map`: Java equality and hashing
-/// are not Python equality and hashing. Python-facing operations live in `DictIntrinsics`.
-/// The caller supplies the already-computed Python hash and the Python key-equivalence predicate.
-///
-/// The hash table uses open addressing with perturbation probing. Entries are kept separately
-/// in insertion order. A table slot contains zero for empty, [#DELETED] for a tombstone, or
-/// the entry index plus one. A deleted entry is marked by a `null` key; Python values and
-/// keys themselves can never be Java `null`.
-///
-/// Not thread-safe. Like the other mutable runtime containers, synchronization is the caller's
-/// responsibility.
-public final class PyDict<K,V> implements Map<K,V> {
+public final class PyDict<K,V> {
   private static final int EMPTY = 0;
   private static final int DELETED = -1;
   private static final int MIN_TABLE_CAPACITY = 8;
@@ -190,308 +181,111 @@ public final class PyDict<K,V> implements Map<K,V> {
     return values[entryIndex];
   }
 
-  // -- Java API
+  // --- Java interop
 
-  @Override
-  public Set<Entry<K, V>> entrySet() {
-    return new AbstractSet<>() {
+  public Map<K,V> asJavaMap() {
+    return new AbstractMap<K, V>() {
+      record Cache<K>(LinkedHashMap<K,Integer> indexMap, long keysVersion) {}
+
+      private Cache<K> cache;
+
+      private Cache<K> computeCache(K[] keys, long keysVersion) {
+        var indexMap = new LinkedHashMap<K,Integer>(keys.length);
+        for(var index = 0; index < entryCount; index++) {
+          var key = keys[index];
+          if (key != null) {
+            var previous = indexMap.put(key, index);
+            if (previous != null) {
+              throw new IllegalStateException("duplicate key: " + key);
+            }
+          }
+        }
+        return new Cache<>(indexMap, keysVersion);
+      }
+
       @Override
       public int size() {
         return size;
       }
 
       @Override
-      public boolean contains(Object o) {
-        Objects.requireNonNull(o);
-        if (!(o instanceof Entry<?,?> entry)) {
-          return false;
-        }
-        var value = get(entry.getKey());
-        return value != null && ComparisonIntrinsics.$sameOrEq$(value, entry.getValue());
-      }
-
-      @Override
-      public boolean remove(Object o) {
-        Objects.requireNonNull(o);
-        if (!(o instanceof Entry<?,?> entry)) {
-          return false;
-        }
-        return PyDict.this.remove(entry.getKey(), entry.getValue());
-      }
-
-      @Override
-      public Iterator<Entry<K, V>> iterator() {
+      public V getOrDefault(Object key, V defaultValue) {
+        Objects.requireNonNull(key);
         var keysVersion = PyDict.this.keysVersion;
-        return new Iterator<>() {
-          private int index = nextIndex(0);
+        var cache = this.cache;
+        if (cache == null || cache.keysVersion != keysVersion) {
+          this.cache = cache = computeCache(keys, keysVersion);
+        }
+        var index = cache.indexMap.get(key);
+        if (index == null) {
+          return null;
+        }
+        return values[index];
+      }
 
-          private int nextIndex(int index) {
-            for(;index < entryCount; index++) {
-              if (keys[index] != null) {
-                return index;
-              }
-            }
-            return index;  // == entryCount
+      @Override
+      public V get(Object key) {
+        Objects.requireNonNull(key);
+        return getOrDefault(key, null);
+      }
+
+      @Override
+      public boolean containsKey(Object key) {
+        return getOrDefault(key, null) != null;
+      }
+
+      @Override
+      public Set<Entry<K, V>> entrySet() {
+        return new AbstractSet<>() {
+          @Override
+          public int size() {
+            return size;
           }
 
           @Override
-          public boolean hasNext() {
-            return index < entryCount;
+          public boolean contains(Object o) {
+            Objects.requireNonNull(o);
+            return containsKey(o);
           }
 
           @Override
-          public Entry<K, V> next() {
-            if (!hasNext()) {
-              throw new NoSuchElementException();
-            }
-            if (keysVersion != PyDict.this.keysVersion) {
-              throw new ConcurrentModificationException();
-            }
-            var key = keys[index];
-            var value = values[index];
-            final class Entry implements Map.Entry<K, V> {
-              @Override
-              public K getKey() {
-                return key;
-              }
-              @Override
-              public V getValue() {
-                return value;
-              }
-              @Override
-              public V setValue(V value) {
-                throw new UnsupportedOperationException();
+          public Iterator<Entry<K, V>> iterator() {
+            var keysVersion = PyDict.this.keysVersion;
+            return new Iterator<>() {
+              private int index = nextIndex(0);
+
+              private int nextIndex(int index) {
+                for (; index < entryCount; index++) {
+                  if (keys[index] != null) {
+                    return index;
+                  }
+                }
+                return index;  // == entryCount
               }
 
               @Override
-              public int hashCode() {
-                return Long.hashCode(
-                    HashingIntrinsics.$hash$(key) ^ HashingIntrinsics.$hash$(value));
+              public boolean hasNext() {
+                return index < entryCount;
               }
 
               @Override
-              public boolean equals(Object obj) {
-                return obj instanceof Map.Entry<?,?> entry &&
-                    ComparisonIntrinsics.$sameOrEq$(key, entry.getKey()) &&
-                    ComparisonIntrinsics.$sameOrEq$(value, entry.getValue());
+              public Entry<K, V> next() {
+                if (!hasNext()) {
+                  throw new NoSuchElementException();
+                }
+                if (keysVersion != PyDict.this.keysVersion) {
+                  throw new ConcurrentModificationException();
+                }
+                var key = keys[index];
+                var value = values[index];
+                index = nextIndex(index + 1);
+                return Map.entry(key, value);
               }
-            }
-            index =  nextIndex(index + 1);
-            return new Entry();
+            };
           }
         };
       }
     };
-  }
-
-
-  @Override
-  public V getOrDefault(Object key, V defaultValue) {
-    Objects.requireNonNull(key);
-    var hash = HashingIntrinsics.$hash$(key);
-    var slot = findSlot(key, hash);
-    var entry = table[slot] - 1;
-    return entry < 0 ? defaultValue : values[entry];
-  }
-
-  @Override
-  public boolean containsValue(Object value) {
-    Objects.requireNonNull(value);
-    for(var i = 0; i < entryCount; i++) {
-      var element = values[i];
-      if (element != null && ComparisonIntrinsics.$sameOrEq$(element, value)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  @Override
-  public boolean remove(Object key, Object value) {
-    Objects.requireNonNull(key);
-    Objects.requireNonNull(value);
-    var hash = HashingIntrinsics.$hash$(key);
-    var slot = findSlot(key, hash);
-    var slotValue = table[slot];
-    int entry;
-    if (slotValue <= 0 || !ComparisonIntrinsics.$sameOrEq$(values[entry = slotValue - 1], value)) {
-      return false;
-    }
-
-    table[slot] = DELETED;
-    keys[entry] = null;
-    values[entry] = null;
-    hashes[entry] = 0L;
-    size--;
-    keysVersion++;
-
-    compactIfSparse();
-    return true;
-  }
-
-  @Override
-  public boolean replace(K key, V oldValue, V newValue) {
-    Objects.requireNonNull(key);
-    Objects.requireNonNull(oldValue);
-    Objects.requireNonNull(newValue);
-    var hash = HashingIntrinsics.$hash$(key);
-    var slot = findSlot(key, hash);
-    var slotValue = table[slot];
-    int entry ;
-    if (slotValue <= 0 || !ComparisonIntrinsics.$sameOrEq$(values[entry = slotValue - 1], oldValue)) {
-      return false;
-    }
-    values[entry] = newValue;
-    return true;
-  }
-
-  @Override
-  public void putAll(Map<? extends K, ? extends V> map) {
-    Objects.requireNonNull(map);
-    map.forEach(this::put);
-  }
-
-  @Override
-  public Set<K> keySet() {
-    return new AbstractSet<>() {
-      @Override
-      public int size() {
-        return size;
-      }
-
-      @Override
-      public boolean contains(Object o) {
-        Objects.requireNonNull(o);
-        return containsKey(o);
-      }
-
-      @Override
-      public boolean remove(Object o) {
-        Objects.requireNonNull(o);
-        return PyDict.this.remove(o) != null;
-      }
-
-      @Override
-      public Iterator<K> iterator() {
-        var keysVersion = PyDict.this.keysVersion;
-        return new Iterator<>() {
-          private int index = nextIndex(0);
-
-          private int nextIndex(int index) {
-            for(;index < entryCount; index++) {
-              if (keys[index] != null) {
-                return index;
-              }
-            }
-            return index;  // == entryCount
-          }
-
-          @Override
-          public boolean hasNext() {
-            return index < entryCount;
-          }
-
-          @Override
-          public K next() {
-            if (!hasNext()) {
-              throw new NoSuchElementException();
-            }
-            if (keysVersion != PyDict.this.keysVersion) {
-              throw new ConcurrentModificationException();
-            }
-            var key =  keys[index];
-            index =  nextIndex(index + 1);
-            return key;
-          }
-        };
-      }
-    };
-  }
-
-  @Override
-  public Collection<V> values() {
-    return new AbstractCollection<>() {
-      @Override
-      public int size() {
-        return size;
-      }
-
-      @Override
-      public boolean contains(Object o) {
-        Objects.requireNonNull(o);
-        return containsValue(o);
-      }
-
-      @Override
-      public boolean remove(Object o) {
-        Objects.requireNonNull(o);
-        for(var i = 0; i < entryCount; i++) {
-          var value = values[i];
-          if (value != null && ComparisonIntrinsics.$sameOrEq$(value, o)) {
-            table[i] = DELETED;
-            keys[i] = null;
-            values[i] = null;
-            hashes[i] = 0L;
-            size--;
-            keysVersion++;
-
-            compactIfSparse();
-            return true;
-          }
-        }
-        return false;
-      }
-
-      @Override
-      public Iterator<V> iterator() {
-        var keysVersion = PyDict.this.keysVersion;
-        return new Iterator<>() {
-          private int index = nextIndex(0);
-
-          private int nextIndex(int index) {
-            for(;index < entryCount; index++) {
-              if (values[index] != null) {
-                return index;
-              }
-            }
-            return index;  // == entryCount
-          }
-
-          @Override
-          public boolean hasNext() {
-            return index < entryCount;
-          }
-
-          @Override
-          public V next() {
-            if (!hasNext()) {
-              throw new NoSuchElementException();
-            }
-            if (keysVersion != PyDict.this.keysVersion) {
-              throw new ConcurrentModificationException();
-            }
-            var value =  values[index];
-            index = nextIndex(index + 1);
-            return value;
-          }
-        };
-      }
-    };
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    Objects.requireNonNull(o);
-    return ComparisonIntrinsics.$eq$(this, o);
-  }
-
-  @Override
-  public int hashCode() {
-    throw unhashable();
-  }
-
-  private static PyTypeError unhashable() {
-    return new PyTypeError("unhashable type: 'dict'");
   }
 
   // -- Hash-table implementation

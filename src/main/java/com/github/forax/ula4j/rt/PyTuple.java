@@ -1,10 +1,10 @@
 package com.github.forax.ula4j.rt;
 
-import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
-
+import java.util.AbstractList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.RandomAccess;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -33,7 +33,7 @@ public sealed interface PyTuple {
       }
       case PyTuple3 t -> {
         Objects.checkIndex(index, 3);
-        yield  index == 0 ? t.item0() : index == 1 ? t.item1() : t.item2();
+        yield index == 0 ? t.item0() : index == 1 ? t.item1() : t.item2();
       }
       case PyTuple4 t -> {
         Objects.checkIndex(index, 4);
@@ -46,21 +46,40 @@ public sealed interface PyTuple {
     };
   }
 
+  default List<Object> asJavaList() {
+    final class JavaList extends AbstractList<Object> implements RandomAccess {
+      @Override
+      public int size() {
+        return PyTuple.this.size();
+      }
+
+      @Override
+      public Object get(int index) {
+        return PyTuple.this.get(index);
+      }
+    }
+    return new JavaList();
+  }
+
   record PyTuple1(Object item0) implements PyTuple {
     public PyTuple1 {
       requireNonNull(item0);
     }
 
     @Override
-    public boolean equals(Object other) {
-      Objects.requireNonNull(other);
-      return ComparisonIntrinsics.$eq$(this, other);
+    public boolean equals(Object obj) {
+      if (obj == this) {
+        return true;
+      }
+      return switch (obj) {
+        case PyTuple1 tuple -> item0.equals(tuple.item0);
+        case PyTupleN tuple when tuple.itemCount() == 1-> item0.equals(tuple.itemAt(0));
+        default -> false;
+      };
     }
 
-    @Override
     public int hashCode() {
-      var hash = HashingIntrinsics.$hash$(this);
-      return Long.hashCode(hash);
+      return Objects.hash(item0);
     }
 
     @Override
@@ -76,15 +95,20 @@ public sealed interface PyTuple {
     }
 
     @Override
-    public boolean equals(Object other) {
-      Objects.requireNonNull(other);
-      return ComparisonIntrinsics.$eq$(this, other);
+    public boolean equals(Object obj) {
+      if (obj == this) {
+        return true;
+      }
+      return switch (obj) {
+        case PyTuple2 tuple -> item0.equals(tuple.item0) && item1.equals(tuple.item1);
+        case PyTupleN tuple when tuple.itemCount() == 2->
+            item0.equals(tuple.itemAt(0)) && item1.equals(tuple.itemAt(1));
+        default -> false;
+      };
     }
 
-    @Override
     public int hashCode() {
-      var hash = HashingIntrinsics.$hash$(this);
-      return Long.hashCode(hash);
+      return Objects.hash(item0, item1);
     }
 
     @Override
@@ -101,15 +125,20 @@ public sealed interface PyTuple {
     }
 
     @Override
-    public boolean equals(Object other) {
-      Objects.requireNonNull(other);
-      return ComparisonIntrinsics.$eq$(this, other);
+    public boolean equals(Object obj) {
+      if (obj == this) {
+        return true;
+      }
+      return switch (obj) {
+        case PyTuple3 tuple -> item0.equals(tuple.item0) && item1.equals(tuple.item1) && item2.equals(tuple.item2);
+        case PyTupleN tuple when tuple.itemCount() == 3->
+            item0.equals(tuple.itemAt(0)) && item1.equals(tuple.itemAt(1)) && item2.equals(tuple.itemAt(2));
+        default -> false;
+      };
     }
 
-    @Override
     public int hashCode() {
-      var hash = HashingIntrinsics.$hash$(this);
-      return Long.hashCode(hash);
+      return Objects.hash(item0, item1, item2);
     }
 
     @Override
@@ -124,6 +153,23 @@ public sealed interface PyTuple {
       requireNonNull(item1);
       requireNonNull(item2);
       requireNonNull(item3);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (obj == this) {
+        return true;
+      }
+      return switch (obj) {
+        case PyTuple4 tuple -> item0.equals(tuple.item0) && item1.equals(tuple.item1) && item2.equals(tuple.item2);
+        case PyTupleN tuple when tuple.itemCount() == 4->
+            item0.equals(tuple.itemAt(0)) && item1.equals(tuple.itemAt(1)) && item2.equals(tuple.itemAt(2)) && item3.equals(tuple.itemAt(3));
+        default -> false;
+      };
+    }
+
+    public int hashCode() {
+      return Objects.hash(item0, item1, item2, item3);
     }
 
     @Override
@@ -155,14 +201,22 @@ public sealed interface PyTuple {
 
     @Override
     public boolean equals(Object other) {
-      Objects.requireNonNull(other);
-      return ComparisonIntrinsics.$eq$(this, other);
+      if (other == null) {
+        return false;
+      }
+      return switch (other) {
+        case PyTuple1 tuple when items.length == 1-> items[0].equals(tuple.item0());
+        case PyTuple2 tuple when items.length == 2-> items[0].equals(tuple.item0()) && items[1].equals(tuple.item1());
+        case PyTuple3 tuple when items.length == 3-> items[0].equals(tuple.item0()) && items[1].equals(tuple.item1()) && items[2].equals(tuple.item2());
+        case PyTuple4 tuple when items.length == 4-> items[0].equals(tuple.item0()) && items[1].equals(tuple.item1()) && items[2].equals(tuple.item2()) && items[3].equals(tuple.item3());
+        case PyTupleN tuple -> Arrays.equals(items, tuple.items);
+        default -> false;
+      };
     }
 
     @Override
     public int hashCode() {
-      var hash = HashingIntrinsics.$hash$(this);
-      return Long.hashCode(hash);
+      return Objects.hash(items);
     }
 
     @Override

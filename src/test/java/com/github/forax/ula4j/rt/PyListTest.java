@@ -145,13 +145,6 @@ public final class PyListTest {
     assertEquals("c", list.get(1));
   }
 
-  @Test
-  public void toArraySupportsTypedArrays() {
-    var list = new PyList<>("a", "b");
-
-    assertArrayEquals(new String[]{"a", "b"}, list.toArray(new String[0]));
-  }
-
   // -- Insertion
 
   @Test
@@ -164,18 +157,6 @@ public final class PyListTest {
 
     assertArrayEquals(
         new Object[]{"a", "b", "c", "d", "e"},
-        list.toArray());
-  }
-
-  @Test
-  public void javaAddMethodsWork() {
-    var list = new PyList<>("a", "c");
-
-    list.add(1, "b");
-    list.add("d");
-
-    assertArrayEquals(
-        new Object[]{"a", "b", "c", "d"},
         list.toArray());
   }
 
@@ -242,16 +223,6 @@ public final class PyListTest {
 
     assertThrows(IndexOutOfBoundsException.class, () -> list.remove(-1));
     assertThrows(IndexOutOfBoundsException.class, () -> list.remove(2));
-  }
-
-  @Test
-  public void removeByValueRemovesOnlyTheFirstMatchingElement() {
-    var list = new PyList<Object>(1L, true, 2L);
-
-    assertTrue(list.remove((Object) 1.0d));
-
-    assertIterableEquals(List.of(true, 2L), list);
-    assertFalse(list.remove((Object) 42L));
   }
 
   @Test
@@ -331,77 +302,6 @@ public final class PyListTest {
     assertArrayEquals(new Object[]{"a", "b"}, list.toArray());
   }
 
-  // -- Python equality semantics
-
-  @Test
-  public void containsAndIndexesUsePythonEquality() {
-    var list = new PyList<Object>(1L, true, 2.0d);
-
-    // bool, int and float values can compare equal in Python.
-    assertTrue(list.contains(1.0d));
-    assertEquals(0, list.indexOf(true));
-    assertEquals(1, list.lastIndexOf(1L));
-
-    assertFalse(list.contains(42L));
-    assertEquals(-1, list.indexOf(42L));
-    assertEquals(-1, list.lastIndexOf(42L));
-  }
-
-  @Test
-  public void containsAndIndexesUseIdentityShortcutForNan() {
-    var nan1 = Double.valueOf(Double.NaN);
-    var nan2 = Double.valueOf(Double.NaN);
-
-    assertNotSame(nan1, nan2);
-
-    var list = new PyList<Object>(nan1);
-
-    assertTrue(list.contains(nan1));
-    assertFalse(list.contains(nan2));
-
-    assertEquals(0, list.indexOf(nan1));
-    assertEquals(-1, list.indexOf(nan2));
-  }
-
-  @Test
-  public void listsCompareByContentUsingPythonEquality() {
-    var left = new PyList<Object>(1L, true);
-    var right = new PyList<Object>(1.0d, 1L);
-    var differentValue = new PyList<Object>(1L, 2L);
-    var differentSize = new PyList<Object>(1L);
-
-    assertEquals(left, right);
-    assertEquals(right, left);
-
-    assertNotEquals(left, differentValue);
-    assertNotEquals(left, differentSize);
-
-    // A PyList is not equal to an ordinary Java List in this runtime.
-    assertNotEquals(left, List.of(1L, true));
-  }
-
-  @Test
-  public void nestedListsUsePythonEquality() {
-    var left = new PyList<Object>(
-        new PyList<Object>(1L, 2L),
-        "value");
-
-    var right = new PyList<Object>(
-        new PyList<Object>(1.0d, 2.0d),
-        "value");
-
-    assertEquals(left, right);
-  }
-
-  @Test
-  public void listIsUnhashable() {
-    var list = new PyList<>(1L, 2L);
-
-    var exception = assertThrows(PyTypeError.class, list::hashCode);
-
-    assertEquals("unhashable type: 'list'", exception.getMessage());
-  }
-
   // -- Java null is not a Python value
 
   @Test
@@ -412,115 +312,5 @@ public final class PyListTest {
     assertThrows(NullPointerException.class, () -> list.insert(0, null));
     assertThrows(NullPointerException.class, () -> list.set(0, null));
     assertThrows(NullPointerException.class, () -> list.appendAll(null));
-  }
-
-  @Test
-  public void javaNullIsRejectedByLookupAndEqualityOperations() {
-    var list = new PyList<Object>(1L);
-
-    assertThrows(NullPointerException.class, () -> list.contains(null));
-    assertThrows(NullPointerException.class, () -> list.indexOf(null));
-    assertThrows(NullPointerException.class, () -> list.lastIndexOf(null));
-    assertThrows(NullPointerException.class, () -> list.remove((Object) null));
-    assertThrows(NullPointerException.class, () -> list.equals(null));
-  }
-
-  // -- Python equality semantics
-
-  @Test
-  public void containsUsesPythonEquality() {
-    var list = new PyList<Object>(1L, 2L, 3L);
-
-    assertTrue(list.contains(1.0d));
-    assertTrue(list.contains(true));
-    assertTrue(list.contains(BigInteger.ONE));
-    assertFalse(list.contains(4L));
-  }
-
-  @Test
-  public void indexOfAndLastIndexOfUsePythonEquality() {
-    var list = new PyList<Object>(1L, 2L, 1.0d, true);
-
-    assertEquals(0, list.indexOf(BigInteger.ONE));
-    assertEquals(3, list.lastIndexOf(1L));
-    assertEquals(-1, list.indexOf(42L));
-  }
-
-  @Test
-  public void containsUsesIdentityShortcutForNan() {
-    var nan1 = Double.valueOf(Double.NaN);
-    var nan2 = Double.valueOf(Double.NaN);
-
-    assertNotSame(nan1, nan2);
-
-    var list = new PyList<Object>(nan1);
-
-    assertTrue(list.contains(nan1));
-    assertFalse(list.contains(nan2));
-
-    assertEquals(0, list.indexOf(nan1));
-    assertEquals(-1, list.indexOf(nan2));
-  }
-
-  @Test
-  public void removeUsesPythonEquality() {
-    var list = new PyList<Object>(1L, 2L, 1.0d, true);
-
-    assertTrue(list.remove((Object) BigInteger.ONE));
-
-    // Only the first matching element should be removed.
-    assertArrayEquals(
-        new Object[]{2L, 1.0d, true},
-        list.toArray()
-    );
-
-    assertFalse(list.remove((Object) 42L));
-  }
-
-// -- Bulk operations
-
-  @Test
-  public void containsAllUsesPythonEquality() {
-    var list = new PyList<Object>(1L, 2L, 3L);
-
-    assertTrue(list.containsAll(List.of(1.0d, 2.0d)));
-    assertFalse(list.containsAll(List.of(1.0d, 42L)));
-  }
-
-  @Test
-  public void removeAllUsesPythonEquality() {
-    var list = new PyList<Object>(1L, 2L, 3L);
-
-    assertTrue(list.removeAll(List.of(1.0d, 3.0d)));
-
-    assertArrayEquals(new Object[]{2L}, list.toArray());
-  }
-
-  @Test
-  public void retainAllUsesPythonEquality() {
-    var list = new PyList<Object>(1L, 2L, 3L);
-
-    assertTrue(list.retainAll(List.of(1.0d, 3.0d)));
-
-    assertArrayEquals(new Object[]{1L, 3L}, list.toArray());
-  }
-
-  @Test
-  public void removeAllItselfEmptiesList() {
-    var list = new PyList<Object>(1L, 2L, 3L);
-    var list2 = new PyList<>(list.toArray());
-
-    assertTrue(list.removeAll(list2));
-
-    assertTrue(list.isEmpty());
-  }
-
-  @Test
-  public void retainAllItselfDoesNotChangeList() {
-    var list = new PyList<Object>(1L, 2L, 3L);
-
-    assertFalse(list.retainAll(list));
-
-    assertArrayEquals(new Object[]{1L, 2L, 3L}, list.toArray());
   }
 }

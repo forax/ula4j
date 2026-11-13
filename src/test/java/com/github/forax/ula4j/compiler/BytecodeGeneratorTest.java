@@ -1688,10 +1688,10 @@ public final class BytecodeGeneratorTest {
       var list = (PyList<?>) eval("x = [[1, 2], [3, 4]]", "x");
       assertEquals(2, list.size());
 
-      var sub0 = (PyList<?>) list.getFirst();
-      var sub1 = (PyList<?>) list.getLast();
-      assertEquals(1L, sub0.getFirst());
-      assertEquals(4L, sub1.getLast());
+      var sub0 = (PyList<?>) list.get(0);
+      var sub1 = (PyList<?>) list.get(1);
+      assertEquals(1L, sub0.get(0));
+      assertEquals(4L, sub1.get(1));
     }
 
     @Test
@@ -1732,8 +1732,8 @@ public final class BytecodeGeneratorTest {
       var second = (PyList<?>) module.getGlobal("second");
 
       assertNotSame(first, second);
-      assertEquals(2L, first.getFirst());
-      assertEquals(1L, second.getFirst());
+      assertEquals(2L, first.get(0));
+      assertEquals(1L, second.get(0));
     }
 
     @Test
@@ -1823,9 +1823,9 @@ public final class BytecodeGeneratorTest {
           left[0] = right[0] = next_value()
           """);
 
-      assertEquals(7L, ((PyList<?>) module.getGlobal("left")).getFirst());
-      assertEquals(7L, ((PyList<?>) module.getGlobal("right")).getFirst());
-      assertEquals(1L, ((PyList<?>) module.getGlobal("calls")).getFirst());
+      assertEquals(7L, ((PyList<?>) module.getGlobal("left")).get(0));
+      assertEquals(7L, ((PyList<?>) module.getGlobal("right")).get(0));
+      assertEquals(1L, ((PyList<?>) module.getGlobal("calls")).get(0));
     }
 
     @Test
@@ -1842,8 +1842,8 @@ public final class BytecodeGeneratorTest {
           values[index()] = right_hand_side()
           """);
 
-      assertEquals(12L, ((PyList<?>) module.getGlobal("events")).getFirst());
-      assertEquals(42L, ((PyList<?>) module.getGlobal("values")).getFirst());
+      assertEquals(12L, ((PyList<?>) module.getGlobal("events")).get(0));
+      assertEquals(42L, ((PyList<?>) module.getGlobal("values")).get(0));
     }
 
     @Test
@@ -1868,7 +1868,7 @@ public final class BytecodeGeneratorTest {
           select_values()[select_index()] += 5
           """);
 
-      assertEquals(15L, ((PyList<?>) module.getGlobal("values")).getFirst());
+      assertEquals(15L, ((PyList<?>) module.getGlobal("values")).get(0));
 
       var calls = (PyList<?>) module.getGlobal("calls");
       assertEquals(1L, calls.get(0));
@@ -2064,9 +2064,9 @@ public final class BytecodeGeneratorTest {
 
       var items = (PyList<?>) dict.get("items");
       assertNotNull(items);
-      var first = (PyList<?>) items.getFirst();
+      var first = (PyList<?>) items.get(0);
       assertNotNull(first);
-      assertEquals(9L, first.getFirst());
+      assertEquals(9L, first.get(0));
     }
 
     @Test

@@ -1,12 +1,10 @@
 package com.github.forax.ula4j.rt;
 
-import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.error.UnimplementedFeatureError;
-import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
 
 import java.util.AbstractList;
 import java.util.Arrays;
-import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 
 /// Mutable Python-list storage.
@@ -14,7 +12,7 @@ import java.util.Objects;
 /// This class deliberately implement java.util.List to offer better interoperability.
 /// Python-visible behavior belongs in ListIntrinsics and the other runtime intrinsics.
 /// Elements are canonical runtime values: Java null is never stored (use PyNone.INSTANCE).
-public final class PyList<E> extends AbstractList<E> {
+public final class PyList<E> {
   private static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
   private static final Object[] EMPTY_ARRAY = new Object[0];
 
@@ -167,102 +165,19 @@ public final class PyList<E> extends AbstractList<E> {
 
   // -- Java API
 
-  @Override
-  public void add(int index, E element) {
-    insert(index, element);
-  }
-
-  @Override
-  public boolean contains(Object o) {
-    Objects.requireNonNull(o);
-    return indexOf(o) >= 0;
-  }
-
-  @Override
-  public int indexOf(Object o) {
-    Objects.requireNonNull(o);
-    for (var i = 0; i < size; i++) {
-      var element = elements[i];
-      if (ComparisonIntrinsics.$sameOrEq$(element, o)) {
-        return i;
+  public List<E> asJavaList() {
+    return new AbstractList<E>() {
+      @Override
+      public int size() {
+        return size;
       }
-    }
-    return -1;
-  }
 
-  @Override
-  public int lastIndexOf(Object o) {
-    Objects.requireNonNull(o);
-    for (var i = size - 1; i >= 0; i--) {
-      var element = elements[i];
-      if (ComparisonIntrinsics.$sameOrEq$(element, o)) {
-        return i;
+      @Override
+      public E get(int index) {
+        Objects.checkIndex(index, size);
+        return elements[index];
       }
-    }
-    return -1;
-  }
-
-  @Override
-  public boolean remove(Object o) {
-    var index = indexOf(o);
-    if (index < 0) {
-      return false;
-    }
-    remove(index);
-    return true;
-  }
-
-  @Override
-  public boolean removeAll(Collection<?> c) {
-    var dict = new PyDict<>();
-    for (var element : c) {
-      dict.put(element, true);
-    }
-    var toInset = 0;
-    for(var i = 0; i < size; i++) {
-      var element = elements[i];
-      if (!dict.containsKey(element)) {
-        elements[toInset++] = element;
-      }
-    }
-    Arrays.fill(elements, toInset, size, null);
-    var result = toInset != size;
-    size = toInset;
-    return result;
-  }
-
-  @Override
-  public boolean retainAll(Collection<?> c) {
-    var dict = new PyDict<>();
-    for (var element : c) {
-      dict.put(element, true);
-    }
-    var toInset = 0;
-    for(var i = 0; i < size; i++) {
-      var element = elements[i];
-      if (dict.containsKey(element)) {
-        elements[toInset++] = element;
-      }
-    }
-    Arrays.fill(elements, toInset, size, null);
-    var result = toInset != size;
-    size = toInset;
-    return result;
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    Objects.requireNonNull(o);
-    return ComparisonIntrinsics.$eq$(this, o);
-  }
-
-  @Override
-  public int hashCode() {
-    throw unhashable();
-  }
-
-  private static PyTypeError unhashable() {
-    return new PyTypeError("unhashable type: 'list'");
+    };
   }
 
 
