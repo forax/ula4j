@@ -6,8 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -141,5 +143,26 @@ public final class GlobalSwitchPointTest {
       }
     }
     assertEquals(20_000L, ctx.getGlobal("counter"));
+  }
+
+  @Test
+  public void globalDoesNotKeepReferenceOnPreviousValue() {
+    var dict = new PyDict<>();
+    var weak = new WeakReference<>(dict);
+
+    var ctx = new ModuleContext();
+    ctx.setGlobal("dict", dict);
+    dict = null;
+
+    var site = getter(ctx, "dict");
+    read(site);
+    read(site);
+
+    ctx.setGlobal("dict", new PyDict<>());
+    read(site);
+
+    System.gc();
+
+    assertTrue(weak.refersTo(null));
   }
 }
