@@ -206,8 +206,8 @@ public final class PyDict<K,V> implements Map<K,V> {
         if (!(o instanceof Entry<?,?> entry)) {
           return false;
         }
-        var value = get(entry.getValue());
-        return value != null;
+        var value = get(entry.getKey());
+        return value != null && ComparisonIntrinsics.$sameOrEq$(value, entry.getValue());
       }
 
       @Override
@@ -271,10 +271,9 @@ public final class PyDict<K,V> implements Map<K,V> {
 
               @Override
               public boolean equals(Object obj) {
-                Object entryKey, entryValue;
                 return obj instanceof Map.Entry<?,?> entry &&
-                    key == (entryKey = entry.getKey()) && ComparisonIntrinsics.$eq$(key, entryKey) &&
-                    value == (entryValue = entry.getValue()) && ComparisonIntrinsics.$eq$(value, entryValue);
+                    ComparisonIntrinsics.$sameOrEq$(key, entry.getKey()) &&
+                    ComparisonIntrinsics.$sameOrEq$(value, entry.getValue());
               }
             }
             index =  nextIndex(index + 1);
@@ -300,7 +299,7 @@ public final class PyDict<K,V> implements Map<K,V> {
     Objects.requireNonNull(value);
     for(var i = 0; i < entryCount; i++) {
       var element = values[i];
-      if (element == value || (element != null && ComparisonIntrinsics.$eq$(element, value))) {
+      if (element != null && ComparisonIntrinsics.$sameOrEq$(element, value)) {
         return true;
       }
     }
@@ -315,10 +314,7 @@ public final class PyDict<K,V> implements Map<K,V> {
     var slot = findSlot(key, hash);
     var slotValue = table[slot];
     int entry;
-    V entryValue;
-    if (slotValue <= 0 ||
-        (entryValue = values[entry = slotValue - 1]) != value ||
-        !ComparisonIntrinsics.$eq$(entryValue, value)) {
+    if (slotValue <= 0 || !ComparisonIntrinsics.$sameOrEq$(values[entry = slotValue - 1], value)) {
       return false;
     }
 
@@ -342,10 +338,7 @@ public final class PyDict<K,V> implements Map<K,V> {
     var slot = findSlot(key, hash);
     var slotValue = table[slot];
     int entry ;
-    V entryValue;
-    if (slotValue <= 0 ||
-        (entryValue = values[entry = slotValue - 1]) != oldValue ||
-        !ComparisonIntrinsics.$eq$(entryValue, oldValue)) {
+    if (slotValue <= 0 || !ComparisonIntrinsics.$sameOrEq$(values[entry = slotValue - 1], oldValue)) {
       return false;
     }
     values[entry] = newValue;
@@ -434,7 +427,7 @@ public final class PyDict<K,V> implements Map<K,V> {
         Objects.requireNonNull(o);
         for(var i = 0; i < entryCount; i++) {
           var value = values[i];
-          if (value == o || (value != null && ComparisonIntrinsics.$eq$(value, o))) {
+          if (value != null && ComparisonIntrinsics.$sameOrEq$(value, o)) {
             table[i] = DELETED;
             keys[i] = null;
             values[i] = null;
@@ -478,7 +471,7 @@ public final class PyDict<K,V> implements Map<K,V> {
               throw new ConcurrentModificationException();
             }
             var value =  values[index];
-            index =  nextIndex(index + 1);
+            index = nextIndex(index + 1);
             return value;
           }
         };
