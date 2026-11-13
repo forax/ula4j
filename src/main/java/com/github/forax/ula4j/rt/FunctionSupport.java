@@ -210,13 +210,13 @@ final class FunctionSupport {
         try {
           // collectArguments requires the filter's return type to be exactly the target parameter type (PyTuple),
           // hence the asType that widens PyTupleK to PyTuple
-          TUPLE1 = lookup.findConstructor((Class<?>) PyTuple.PyTuple1.class, MethodType.methodType(void.class, Object.class))
+          TUPLE1 = lookup.findConstructor(PyTuple.PyTuple1.class, MethodType.methodType(void.class, Object.class))
               .asType(MethodType.methodType(PyTuple.class, Object.class));
-          TUPLE2 = lookup.findConstructor((Class<?>) PyTuple.PyTuple2.class, MethodType.methodType(void.class, Object.class, Object.class))
+          TUPLE2 = lookup.findConstructor(PyTuple.PyTuple2.class, MethodType.methodType(void.class, Object.class, Object.class))
               .asType(MethodType.methodType(PyTuple.class, Object.class, Object.class));
-          TUPLE3 = lookup.findConstructor((Class<?>) PyTuple.PyTuple3.class, MethodType.methodType(void.class, Object.class, Object.class, Object.class))
+          TUPLE3 = lookup.findConstructor(PyTuple.PyTuple3.class, MethodType.methodType(void.class, Object.class, Object.class, Object.class))
               .asType(MethodType.methodType(PyTuple.class, Object.class, Object.class, Object.class));
-          TUPLE4 = lookup.findConstructor((Class<?>) PyTuple.PyTuple4.class, MethodType.methodType(void.class, Object.class, Object.class, Object.class, Object.class))
+          TUPLE4 = lookup.findConstructor(PyTuple.PyTuple4.class, MethodType.methodType(void.class, Object.class, Object.class, Object.class, Object.class))
               .asType(MethodType.methodType(PyTuple.class, Object.class, Object.class, Object.class, Object.class));
           TUPLE_N = lookup.findConstructor(PyTuple.PyTupleN.class, MethodType.methodType(void.class, Object[].class))
               .asType(MethodType.methodType(PyTuple.class, Object[].class));
