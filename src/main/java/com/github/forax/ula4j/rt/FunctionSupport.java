@@ -22,8 +22,8 @@ import java.util.List;
 ///
 /// Calling conventions of a compiled entry ("entry" below):
 ///  - Python function: `(captures..., PyFunction self, Object p0..pn-1 [, PyTuple rest]) -> Object`
-///  - native function: `(PyFunction self, Object p0..pn-1 [, Object[] rest]) -> Object` (fixed arity handle)
-/// For a native, `rest` is a plain array holding every argument after the declared parameters.
+///  - builtin function: `(PyFunction self, Object p0..pn-1 [, Object[] rest]) -> Object` (fixed arity handle)
+/// For a builtin, `rest` is a plain array holding every argument after the declared parameters.
 final class FunctionSupport {
   private FunctionSupport() { throw new AssertionError(); }
 
@@ -113,7 +113,7 @@ final class FunctionSupport {
               MethodType.methodType(Object.class, Object.class, Object[].class, int.class, String[].class));
           REST_TUPLE = lookup.findStatic(Megamorphic.class, "restTuple",
               MethodType.methodType(PyTuple.class, Object[].class, int.class));
-          NATIVE_REST = lookup.findStatic(Megamorphic.class, "nativeRest",
+          NATIVE_REST = lookup.findStatic(Megamorphic.class, "builtinRest",
               MethodType.methodType(Object[].class, Object[].class, int.class));
         } catch (NoSuchMethodException | IllegalAccessException e) {
           throw new AssertionError(e);
@@ -167,7 +167,7 @@ final class FunctionSupport {
               : handle.asSpreader(2, Object[].class, arity);
         }
 
-        // 3. Rest parameter (a PyTuple for Python code, an Object[] for a native):
+        // 3. Rest parameter (a PyTuple for Python code, an Object[] for a builtin):
         //    read the declared parameters one by one and pack the remaining arguments.
         var packer = code.isBuiltin() ? NATIVE_REST : REST_TUPLE;
         var filters = new MethodHandle[arity + 1];
@@ -190,9 +190,9 @@ final class FunctionSupport {
         return TupleIntrinsics.fromArrayRange(args, start);
       }
 
-      /// The array is handed to the native as is when there is no declared parameter:
-      /// natives must neither retain nor modify it.
-      private static Object[] nativeRest(Object[] args, int start) {
+      /// The array is handed to the builtin as is when there is no declared parameter:
+      /// builtin functions must neither retain nor modify it.
+      private static Object[] builtinRest(Object[] args, int start) {
         return start == 0 ? args : Arrays.copyOfRange(args, start, args.length);
       }
     }
@@ -415,7 +415,7 @@ final class FunctionSupport {
 
     /// Adapts the entry to `(X, Object x (arity + restCount)) -> Object`: the rest parameter, at `position`,
     /// is replaced by `restCount` parameters (packed into a PyTuple for a Python function, into an Object[]
-    /// for a native one).
+    /// for a builtin one).
     static MethodHandle adapt(PyFunction function, MethodHandle entry, int position, int restCount) {
       var code = function.code;
       if (!code.isVariadic()) {
@@ -434,7 +434,7 @@ final class FunctionSupport {
     /// The canonical size is `max(positionalCount, arity)` and every slot is filled exactly once.
     static int[] reorderKeywordArguments(PyFunction function, int positionalCount, String[] keywordNames) {
       if (keywordNames.length != 0 && function.code.isBuiltin()) {
-        throw nativeKeywords(function);
+        throw builtinKeywords(function);
       }
       var parameters = function.parameters();
       var arity = parameters.size();
@@ -519,9 +519,9 @@ final class FunctionSupport {
       };
     }
 
-    /// Fixed-arity natives are positional-only (as in CPython). Variadic natives accept keywords in CPython
-    /// (print(sep=...), int(x, base=...)) but we do not have keyword ABI for natives yet.
-    private static RuntimeException nativeKeywords(PyFunction function) {
+    /// Fixed-arity builtins are positional-only (as in CPython). Variadic builtins accept keywords in CPython
+    /// (print(sep=...), int(x, base=...)) but we do not have keyword ABI for builtins yet.
+    private static RuntimeException builtinKeywords(PyFunction function) {
       if (function.code.isVariadic()) {
         return new UnimplementedFeatureError("keyword arguments of the built-in function " + function.name() + "()");
       }
