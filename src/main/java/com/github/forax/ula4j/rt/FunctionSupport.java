@@ -433,14 +433,11 @@ final class FunctionSupport {
     /// of the canonical order: the declared parameters, then the extra positional arguments.
     /// The canonical size is `max(positionalCount, arity)` and every slot is filled exactly once.
     static int[] reorderKeywordArguments(PyFunction function, int positionalCount, String[] keywordNames) {
-      if (keywordNames.length != 0 && function.code.isBuiltin()) {
+      if (function.code.isBuiltin()) {
         throw builtinKeywords(function);
       }
       var parameters = function.parameters();
       var arity = parameters.size();
-      if (positionalCount > arity && !function.code.isVariadic()) {
-        throw tooManyPositional(function, positionalCount);
-      }
 
       var plan = new int[positionalCount + keywordNames.length];
       var assigned = new boolean[arity];
