@@ -57,11 +57,11 @@ public final class RT {
 
   public static CallSite bsmGetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
     var loader = (RT.FunctionClassLoader) lookup.lookupClass().getClassLoader();
-    return FunctionSupport.getGlobal(loader.context, globalName);
+    return GlobalSupport.getGlobal(loader.context, globalName);
   }
 
   public static CallSite bsmSetGlobal(MethodHandles.Lookup lookup, String name, MethodType type, String globalName) {
     var loader = (RT.FunctionClassLoader) lookup.lookupClass().getClassLoader();
-    return FunctionSupport.setGlobal(loader.context, globalName);
+    return GlobalSupport.setGlobal(loader.context, globalName);
   }
 }

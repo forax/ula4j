@@ -9,7 +9,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,7 +31,7 @@ public final class GlobalSwitchPointTest {
   }
 
   private static MethodHandle getter(ModuleContext ctx, String name) {
-    return FunctionSupport.getGlobal(ctx, name).dynamicInvoker();
+    return GlobalSupport.getGlobal(ctx, name).dynamicInvoker();
   }
 
   @Test
@@ -68,7 +67,7 @@ public final class GlobalSwitchPointTest {
     ctx.setGlobal("x", 1L);
 
     var get = getter(ctx, "x");
-    var set = FunctionSupport.setGlobal(ctx, "x").dynamicInvoker();
+    var set = GlobalSupport.setGlobal(ctx, "x").dynamicInvoker();
     assertEquals(1L, read(get));
 
     set.invokeExact((Object) 7L);

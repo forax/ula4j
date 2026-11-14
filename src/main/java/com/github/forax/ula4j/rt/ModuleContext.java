@@ -13,63 +13,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /// Everything a module owns: global cells, builtins, the registered functions and their compiled bodies.
 public final class ModuleContext {
 
-  static final class GlobalCell {
-    record ResolvedCell(Object value, SwitchPoint switchPoint) {}
-
-    private final String name;
-    private volatile Object value;
-
-    // guarded by this, null until the value is set
-    private SwitchPoint switchPoint;
-
-    private GlobalCell(String name, Object value) {
-      this.name = name;
-      this.value = value;
-      super();
-    }
-
-    /// Slow path: always correct, whatever the state of the cell.
-    public Object get() {
-      var value = this.value;  // volatile read
-      if (value != null) {
-        return value;
-      }
-      throw new PyNameError("name '" + name + "' is not defined");
-    }
-
-    public void set(Object newValue) {
-      Objects.requireNonNull(newValue);
-      synchronized (this) {
-        // invalidate switch point if it exists
-        var switchPoint = this.switchPoint;
-        if (switchPoint != null) {
-          SwitchPoint.invalidateAll(new SwitchPoint[] { switchPoint });
-          this.switchPoint = null;
-        }
-        this.value = newValue;  // volatile write
-      }
-    }
-
-    /// The value to embed as a constant, or null if the cell can not (or no longer) be treated
-    /// as a constant: unbound (reading it raises NameError) or already unstable.
-    ResolvedCell resolveCell() {
-      synchronized (this) {
-        var value = this.value;  // volatile read
-        if (value == null) {
-          return null;
-        }
-        if (switchPoint == null) {
-          switchPoint = new SwitchPoint();
-        }
-        return new ResolvedCell(value, switchPoint);
-      }
-    }
-  }
-
   // can only be get()/put() under a synchronized
   private final IdentityHashMap<Stmt.FunctionDef, FunctionScope> scopes;
 
-  private final ConcurrentHashMap<String, GlobalCell> globals;
+  private final ConcurrentHashMap<String, GlobalSupport.GlobalCell> globals;
 
   public ModuleContext() {
     scopes = new IdentityHashMap<>();
@@ -79,9 +26,9 @@ public final class ModuleContext {
 
   // ---- globals
 
-  GlobalCell cell(String name) {
+  GlobalSupport.GlobalCell cell(String name) {
     return globals.computeIfAbsent(name,
-        n -> new GlobalCell(n, Builtins.BUILTINS.get(n)));
+        n -> new GlobalSupport.GlobalCell(n, Builtins.BUILTINS.get(n)));
   }
 
   public Object getGlobal(String name) {
