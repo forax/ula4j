@@ -1,6 +1,6 @@
 package com.github.forax.ula4j.rt;
 
-import com.github.forax.ula4j.rt.specializer.Specializer;
+import com.github.forax.ula4j.compiler.Specializer;
 
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;

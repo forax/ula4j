@@ -1,4 +1,4 @@
-package com.github.forax.ula4j.rt.specializer;
+package com.github.forax.ula4j.compiler;
 
 import com.github.forax.ula4j.rt.RT;
 import com.github.forax.ula4j.rt.intrinsic.Intrinsic;
@@ -20,6 +20,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import static org.objectweb.asm.Opcodes.ACC_FINAL;
+import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
+import static org.objectweb.asm.Opcodes.ACC_STATIC;
+import static org.objectweb.asm.Opcodes.ACC_SUPER;
+import static org.objectweb.asm.Opcodes.ICONST_0;
+import static org.objectweb.asm.Opcodes.INVOKESTATIC;
+import static org.objectweb.asm.Opcodes.POP;
+
 public final class Specializer {
   private Specializer() {
     throw new AssertionError();
@@ -36,7 +44,7 @@ public final class Specializer {
       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/Class;)Ljava/lang/invoke/CallSite;",
       false);
 
-  private static final int INTRINSIC_ACCESS = Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC;
+  private static final int INTRINSIC_ACCESS = ACC_PUBLIC | ACC_STATIC;
   private static final String INTRINSIC_DESCRIPTOR = Intrinsic.class.descriptorString();
 
   private static boolean isIntrinsicName(String methodName) {
@@ -56,33 +64,21 @@ public final class Specializer {
     var filename = "/" + clazz.getName().replace('.', '/') + ".class";
 
     byte[] classfile;
-    boolean previewEnabled;
     try(var inputStream = clazz.getResourceAsStream(filename)) {
       if (inputStream == null) {
         throw new IOError(new IOException("Cannot open " + filename));
       }
       classfile = inputStream.readAllBytes();
-
-      previewEnabled = classfile[4] == (byte) 0xFF && classfile[5] == (byte) 0xFF;
-      if (previewEnabled) {
-        // HACK, let's set the minor version (bytes at index 4 and 5) to 0
-        // ASM does not support Valhalla yet
-        classfile[4] = 0;
-        classfile[5] = 0;
-      }
-
     } catch (IOException e) {
       throw new IOError(e);
     }
     var specializedMap = new HashMap<String, Supplier<MethodHandle>>();
     var reader = new ClassReader(classfile);
     reader.accept(new ClassVisitor(Opcodes.ASM9) {
-      private int version;
       private String ownerInternalName;
 
       @Override
       public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-        this.version = version;
         this.ownerInternalName = name;
       }
 
@@ -95,7 +91,8 @@ public final class Specializer {
 
         var writer = new ClassWriter(0);
         var hiddenInternalName = clazz.getPackageName().replace('.', '/') + "/" + methodName;
-        writer.visit(version, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, hiddenInternalName, null, "java/lang/Object", null);
+        writer.visit(ClassFileVersion.CLASS_FILE_VERSION, ACC_PUBLIC | ACC_FINAL | ACC_SUPER,
+            hiddenInternalName, null, "java/lang/Object", null);
 
         var mv = writer.visitMethod(access, methodName, methodDescriptor, signature, exceptions);
         return new MethodVisitor(Opcodes.ASM9, mv) {
@@ -117,8 +114,8 @@ public final class Specializer {
                 && allBsmArgsAreClasses(bsmArgs)) {
               // The descriptor is (Ljava/lang/Object;I)I to reduce the number of LambdaFrom shape at runtime
               // We also ensure that the restart is always 0 (we do not support "when" syntax)
-              super.visitInsn(Opcodes.POP);
-              super.visitInsn(Opcodes.ICONST_0);
+              super.visitInsn(POP);
+              super.visitInsn(ICONST_0);
               super.visitInvokeDynamicInsn(name, "(Ljava/lang/Object;I)I", BSM_TYPE_SWITCH, bsmArgs);
               return;
             }
@@ -127,7 +124,7 @@ public final class Specializer {
 
           @Override
           public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-            if (opcode == Opcodes.INVOKESTATIC && isIntrinsicName(name)) {
+            if (opcode == INVOKESTATIC && isIntrinsicName(name)) {
               if (owner.equals(ownerInternalName) && name.equals(methodName) && descriptor.equals(methodDescriptor)) {
                 throw new IncompatibleClassChangeError("Recursive call method " + ownerInternalName + "." + name + descriptor);
               }
@@ -148,12 +145,6 @@ public final class Specializer {
 
             writer.visitEnd();
             var content = writer.toByteArray();
-
-            if (previewEnabled) {
-              // HACK, set the minor version back to preview
-              content[4] = (byte) 0xFF;
-              content[5] = (byte) 0xFF;
-            }
 
             specializedMap.put(methodName + methodDescriptor, () -> {
               try {

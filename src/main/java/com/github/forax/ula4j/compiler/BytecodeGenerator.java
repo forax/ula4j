@@ -188,7 +188,8 @@ public final class BytecodeGenerator {
         return "java/lang/Object";  // never load a class, every merged value is used as an Object
       }
     };
-    cw.visit(V25, ACC_PUBLIC | ACC_FINAL | ACC_SUPER, internalName, null, "java/lang/Object", null);
+    cw.visit(ClassFileVersion.CLASS_FILE_VERSION, ACC_PUBLIC | ACC_FINAL | ACC_SUPER,
+        internalName, null, "java/lang/Object", null);
     cw.visitSource("script", null);
     return cw;
   }
@@ -409,7 +410,7 @@ public final class BytecodeGenerator {
           storeName(n.id());
         }
         case Target.SubscriptTarget t -> augAssignSubscript(t, s);
-        case Target.TupleTarget t -> throw new AssertionError("augmented assign tuple target");
+        case Target.TupleTarget _ -> throw new AssertionError("augmented assign tuple target");
       }
     }
 

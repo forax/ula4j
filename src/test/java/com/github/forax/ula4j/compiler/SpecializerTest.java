@@ -1,4 +1,4 @@
-package com.github.forax.ula4j.rt.specializer;
+package com.github.forax.ula4j.compiler;
 
 import com.github.forax.ula4j.rt.PyNone;
 import com.github.forax.ula4j.rt.PyTuple.PyTuple1;

@@ -5,7 +5,7 @@ import com.github.forax.ula4j.rt.PyTuple.PyTuple2;
 import com.github.forax.ula4j.rt.PyTuple.PyTupleN;
 import com.github.forax.ula4j.rt.error.PyTypeError;
 import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
-import com.github.forax.ula4j.rt.specializer.SpecializerFixtures;
+import com.github.forax.ula4j.compiler.SpecializerFixtures;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 

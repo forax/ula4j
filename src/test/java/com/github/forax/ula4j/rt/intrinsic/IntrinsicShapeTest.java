@@ -1,14 +1,6 @@
-package com.github.forax.ula4j.rt.specializer;
+package com.github.forax.ula4j.rt.intrinsic;
 
-import com.github.forax.ula4j.rt.intrinsic.ArithmeticIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.ContainmentIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.IteratorIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.ListIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.TruthinessIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.ComparisonIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.HashingIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.StringIntrinsics;
-import com.github.forax.ula4j.rt.intrinsic.TupleIntrinsics;
+import com.github.forax.ula4j.compiler.SpecializerFixtures;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
