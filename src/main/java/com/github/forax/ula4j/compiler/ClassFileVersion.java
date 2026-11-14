@@ -12,8 +12,8 @@ final class ClassFileVersion {
         if (input == null) {
           throw new AssertionError("Long.class not found");
         }
-        var classfile = input.readAllBytes();
-        valhallaEnabled = classfile[4] == (byte) 0xFF && classfile[5] == (byte) 0xFF;
+        var header = input.readNBytes(6);
+        valhallaEnabled = header[4] == (byte) 0xFF && header[5] == (byte) 0xFF;
       } catch (IOException e) {
         throw new AssertionError(e);
       }
