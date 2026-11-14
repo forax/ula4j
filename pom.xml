@@ -46,6 +46,17 @@
             <version>5.14.3</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.openjdk.jmh</groupId>
+            <artifactId>jmh-core</artifactId>
+            <version>1.37</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjdk.jmh</groupId>
+            <artifactId>jmh-generator-annprocess</artifactId>
+            <version>1.37</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -72,7 +83,14 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.16.0</version>
                 <configuration>
-                    <release>27</release>
+                    <release>28</release>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.openjdk.jmh</groupId>
+                            <artifactId>jmh-generator-annprocess</artifactId>
+                            <version>1.37</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
 
@@ -82,12 +100,12 @@
                 <version>3.6.2</version>
                 <configuration>
                     <createDependencyReducedPom>false</createDependencyReducedPom>
-                    <artifactSet>
+                    <!-- artifactSet>
                         <includes>
                             <include>org.ow2.asm:*</include>
                             <include>org.antlr:antlr4-runtime</include>
                         </includes>
-                    </artifactSet>
+                    </artifactSet -->
                     <filters>
                         <filter>
                             <artifact>*:*</artifact>
@@ -99,8 +117,9 @@
                     </filters>
                     <transformers>
                         <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                            <mainClass>com.github.forax.ula4j.main.Main</mainClass>
+                            <mainClass>org.openjdk.jmh.Main</mainClass>
                         </transformer>
+                        <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                     </transformers>
                 </configuration>
                 <executions>

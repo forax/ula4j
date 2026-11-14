@@ -54,12 +54,23 @@ public final class Specializer {
 
   public static Map<String, Supplier<MethodHandle>> specialize(MethodHandles.Lookup lookup, Class<?> clazz) {
     var filename = "/" + clazz.getName().replace('.', '/') + ".class";
+
     byte[] classfile;
+    boolean previewEnabled;
     try(var inputStream = clazz.getResourceAsStream(filename)) {
       if (inputStream == null) {
         throw new IOError(new IOException("Cannot open " + filename));
       }
       classfile = inputStream.readAllBytes();
+
+      previewEnabled = classfile[4] == (byte) 0xFF && classfile[5] == (byte) 0xFF;
+      if (previewEnabled) {
+        // HACK, let's set the minor version (bytes at index 4 and 5) to 0
+        // ASM does not support Valhalla yet
+        classfile[4] = 0;
+        classfile[5] = 0;
+      }
+
     } catch (IOException e) {
       throw new IOError(e);
     }
@@ -137,6 +148,12 @@ public final class Specializer {
 
             writer.visitEnd();
             var content = writer.toByteArray();
+
+            if (previewEnabled) {
+              // HACK, set the minor version back to preview
+              content[4] = (byte) 0xFF;
+              content[5] = (byte) 0xFF;
+            }
 
             specializedMap.put(methodName + methodDescriptor, () -> {
               try {

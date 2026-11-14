@@ -53,7 +53,7 @@ public final class ArithmeticIntrinsics {
             try {
               return Math.addExact(l, r);
             } catch (ArithmeticException _) {
-              return BigInteger.valueOf(l).add(BigInteger.valueOf(r));
+              return addGeneric(left, right);
             }
           }
           default -> { return addGeneric(left, right); }
@@ -84,7 +84,7 @@ public final class ArithmeticIntrinsics {
             try {
               return Math.subtractExact(l, r);
             } catch (ArithmeticException _) {
-              return BigInteger.valueOf(l).subtract(BigInteger.valueOf(r));
+              return subGeneric(l, r);
             }
           }
           default -> { return subGeneric(left, right); }
@@ -109,7 +109,7 @@ public final class ArithmeticIntrinsics {
             try {
               return Math.multiplyExact(l, r);
             } catch (ArithmeticException _) {
-              return BigInteger.valueOf(l).multiply(BigInteger.valueOf(r));
+              return mulGeneric(left, right);
             }
           }
           default -> { return mulGeneric(left, right); }

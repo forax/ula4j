@@ -30,8 +30,16 @@ public final class IntrinsicShapeTest {
   private static ClassNode classNode(Class<?> type) throws IOException {
     try (var input = type.getResourceAsStream("/" + type.getName().replace('.', '/') + ".class")) {
       assertNotNull(input, "can not find classfile of " + type.getName());
+
+      var classfile = input.readAllBytes();
+
+      // HACK, let's set the minor version (bytes at index 4 and 5) to 0
+      // ASM does not support Valhalla yet
+      classfile[4] = 0;
+      classfile[5] = 0;
+
       var node = new ClassNode();
-      new ClassReader(input).accept(node, 0);
+      new ClassReader(classfile).accept(node, 0);
       return node;
     }
   }

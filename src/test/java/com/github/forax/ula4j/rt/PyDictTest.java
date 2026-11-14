@@ -1,6 +1,7 @@
 package com.github.forax.ula4j.rt;
 
 import com.github.forax.ula4j.rt.error.PyTypeError;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -127,6 +128,8 @@ public final class PyDictTest {
 
   @Test
   public void distinctNanObjectsCanBeUsedAsDifferentKeys() {
+    Assumptions.assumeFalse(Runtime.version().feature() >= 28);
+
     var dict = new PyDict<Object, Object>();
 
     var nan1 = Double.valueOf(Double.NaN);
