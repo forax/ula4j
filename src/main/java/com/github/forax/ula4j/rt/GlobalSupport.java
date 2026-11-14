@@ -16,7 +16,7 @@ final class GlobalSupport {
     throw new AssertionError();
   }
 
-  private static final MethodHandle CELL_GET, CELL_SET;
+  private static final MethodHandle CELL_GET, CELL_SET, NAME_ERROR;
   static {
     var lookup = MethodHandles.lookup();
     try {
@@ -24,6 +24,8 @@ final class GlobalSupport {
           MethodType.methodType(Object.class));
       CELL_SET = lookup.findVirtual(GlobalCell.class, "set",
           MethodType.methodType(void.class, Object.class));
+      NAME_ERROR = lookup.findStatic(GlobalCell.class, "nameError",
+          MethodType.methodType(Object.class, String.class));
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new AssertionError(e);
     }
@@ -50,6 +52,10 @@ final class GlobalSupport {
       if (value != null) {
         return value;
       }
+      throw (RuntimeException) nameError(name);
+    }
+
+    private static Object nameError(String name) {
       throw new PyNameError("name '" + name + "' is not defined");
     }
 
@@ -71,9 +77,6 @@ final class GlobalSupport {
     ResolvedCell resolveCell() {
       synchronized (this) {
         var value = this.value;  // volatile read
-        if (value == null) {
-          return null;
-        }
         var switchPoint = this.switchPoint;
         if (switchPoint == null) {
           this.switchPoint = switchPoint = new SwitchPoint();
@@ -99,13 +102,16 @@ final class GlobalSupport {
 
     private static final int MAX_COUNTER = 2;
 
+    private final MethodHandle fallback;
     private final GlobalCell cell;
     private int counter;
 
     private GetGlobalCallSite(GlobalCell cell) {
       this.cell = cell;
       super(TYPE);
-      setTarget(FALLBACK.bindTo(this));
+      var fallback = FALLBACK.bindTo(this);
+      this.fallback = fallback;
+      setTarget(fallback);
     }
 
     private Object fallback() {
@@ -117,14 +123,19 @@ final class GlobalSupport {
       this.counter = counter + 1;
 
       var resolvedCell = cell.resolveCell();
-      if (resolvedCell == null) {  // the value can not be reverted to null
-        throw new AssertionError();
+      var value = resolvedCell.value;
+      MethodHandle mh;
+      if (value == null) {
+        mh = NAME_ERROR.bindTo(cell.name);
+      } else {
+        mh = MethodHandles.constant(Object.class, value);
       }
-      var value = resolvedCell.value();
-      var constant = MethodHandles.constant(Object.class, value);
-      var target = resolvedCell.switchPoint().guardWithTest(constant, FALLBACK.bindTo(this));
+      var target = resolvedCell.switchPoint().guardWithTest(mh, fallback);
       setTarget(target);
 
+      if (value == null) {
+        throw (RuntimeException) GlobalCell.nameError(cell.name);
+      }
       return value;
     }
   }
@@ -132,11 +143,6 @@ final class GlobalSupport {
   /// A read of a global.
   static CallSite getGlobal(ModuleContext context, String name) {
     var cell = context.cell(name);
-    var resolvedCell = cell.resolveCell();
-    if (resolvedCell == null) {  // no value, no backup bindings
-      return new ConstantCallSite(CELL_GET.bindTo(cell));
-    }
-    // From that point on, the value will never be null
     return new GetGlobalCallSite(cell);
   }
 
