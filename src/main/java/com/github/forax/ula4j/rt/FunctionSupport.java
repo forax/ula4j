@@ -87,8 +87,8 @@ final class FunctionSupport {
       this.counter = counter + 1;
 
       var resolvedCell = cell.resolveCell();
-      if (resolvedCell == null) {
-        throw new AssertionError("the value has already been observed as non-null");
+      if (resolvedCell == null) {  // the value can not be reverted to null
+        throw new AssertionError();
       }
       var value = resolvedCell.value();
       var constant = MethodHandles.constant(Object.class, value);
